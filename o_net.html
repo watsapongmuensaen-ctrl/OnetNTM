@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="th" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบคลังแบบทดสอบ O-NET ออนไลน์</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Prompt & Sarabun -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'Sarabun', 'sans-serif'],
+                        body: ['Sarabun', 'Prompt', 'sans-serif']
+                    },
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            100: '#e0e7ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            900: '#1e1b4b'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            font-family: 'Prompt', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        .glass-header {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+        }
+        .card-hover {
+            transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 24px -6px rgba(15, 23, 42, 0.06), 0 4px 8px -4px rgba(15, 23, 42, 0.03);
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-indigo-600 selection:text-white">
+
+    <!-- Top Navigation Bar (Clean Student Front-end) -->
+    <header class="sticky top-0 z-30 glass-header border-b border-slate-200/80">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-3">
+            <!-- Brand Logo -->
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+                    <i class="fa-solid fa-graduation-cap text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold tracking-tight text-slate-900">ระบบคลังแบบทดสอบ <span class="text-indigo-600">O-NET</span></h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">เลือกปีการศึกษาและรายวิชาที่ต้องการเพื่อเข้าสู่การทดสอบได้ทันที</p>
+                </div>
+            </div>
+
+            <!-- Back-Office Access Button -->
+            <div class="flex items-center gap-2">
+                <button id="adminToggleBtn" onclick="handleBackofficeToggle()" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition shadow-2xs">
+                    <i id="adminBtnIcon" class="fa-solid fa-lock text-slate-400"></i>
+                    <span id="adminBtnText">ระบบหลังบ้าน</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Back-Office Control Bar (Hidden until authenticated with password) -->
+    <div id="backofficeBar" class="hidden bg-slate-900 text-white border-b border-slate-800">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5">
+                <span id="sheetStatusDot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-xs sm:text-sm font-semibold">โหมดจัดการระบบหลังบ้าน</span>
+                <span id="sheetStatusText" class="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">เชื่อมต่อฐานข้อมูลพร้อมใช้งาน</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button onclick="openYearModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white text-slate-900 hover:bg-indigo-50 transition">
+                    <i class="fa-solid fa-calendar-plus text-indigo-600"></i>
+                    <span>+ เพิ่มปีการศึกษา</span>
+                </button>
+                <button onclick="openLinkModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 transition">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>+ แปะลิงก์การทดสอบ</span>
+                </button>
+                <button onclick="exitBackoffice()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition">
+                    <i class="fa-solid fa-right-from-bracket"></i>
+                    <span>ออกจากหลังบ้าน</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Clean Hero Banner -->
+    <section class="bg-white border-b border-slate-200/70">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-7 sm:py-9">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+                <div class="space-y-2">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-semibold">
+                        <i class="fa-solid fa-circle-check text-indigo-600"></i>
+                        <span>พร้อมสำหรับการฝึกทำข้อสอบออนไลน์</span>
+                    </div>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                        เลือกชุดข้อสอบ O-NET ที่ต้องการทดสอบ
+                    </h2>
+                    <p class="text-slate-500 text-sm sm:text-base">
+                        คลิกที่ปุ่ม <strong class="text-slate-700">"เริ่มทำแบบทดสอบ"</strong> ในวิชาที่ต้องการเพื่อเข้าสู่หน้าทำข้อสอบได้ทันที
+                    </p>
+                </div>
+
+                <!-- Minimalist Stats -->
+                <div class="flex items-center gap-3 self-start md:self-auto">
+                    <div class="px-5 py-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-center min-w-[110px]">
+                        <div id="statTotalYears" class="text-2xl font-bold text-indigo-600">0</div>
+                        <div class="text-xs text-slate-500">ปีการศึกษา</div>
+                    </div>
+                    <div class="px-5 py-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-center min-w-[110px]">
+                        <div id="statTotalLinks" class="text-2xl font-bold text-slate-900">0</div>
+                        <div class="text-xs text-slate-500">ชุดแบบทดสอบ</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+
+        <!-- Filter & Search Control Bar -->
+        <div class="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-5 shadow-2xs space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <!-- Search Input -->
+                <div class="md:col-span-5 relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input
+                        type="text"
+                        id="searchInput"
+                        oninput="renderAll()"
+                        placeholder="ค้นหาชื่อชุดข้อสอบ หรือรายวิชา..."
+                        class="w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition"
+                    >
+                    <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                    </button>
+                </div>
+
+                <!-- Filter by Academic Year -->
+                <div class="md:col-span-2">
+                    <select id="filterYear" onchange="renderAll()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
+                        <option value="all">ทุกปีการศึกษา</option>
+                    </select>
+                </div>
+
+                <!-- Filter by Grade Level -->
+                <div class="md:col-span-2">
+                    <select id="filterLevel" onchange="renderAll()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
+                        <option value="all">ทุกระดับชั้น</option>
+                        <option value="ป.6">ประถมศึกษาปีที่ 6 (ป.6)</option>
+                        <option value="ม.3">มัธยมศึกษาปีที่ 3 (ม.3)</option>
+                        <option value="ม.6">มัธยมศึกษาปีที่ 6 (ม.6)</option>
+                    </select>
+                </div>
+
+                <!-- Filter by Subject -->
+                <div class="md:col-span-3">
+                    <select id="filterSubject" onchange="renderAll()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition">
+                        <option value="all">ทุกรายวิชา</option>
+                        <option value="คณิตศาสตร์">คณิตศาสตร์</option>
+                        <option value="ภาษาไทย">ภาษาไทย</option>
+                        <option value="วิทยาศาสตร์">วิทยาศาสตร์</option>
+                        <option value="ภาษาอังกฤษ">ภาษาอังกฤษ</option>
+                        <option value="สังคมศึกษา">สังคมศึกษาฯ</option>
+                        <option value="รวมวิชา">รวมทุกรายวิชา / อื่นๆ</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Quick Year Pills -->
+            <div class="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-slate-100">
+                <div class="flex items-center gap-1.5 flex-wrap" id="yearQuickPills">
+                    <!-- Populated via JS -->
+                </div>
+                <button onclick="resetFilters()" class="text-xs text-slate-400 hover:text-indigo-600 transition">
+                    ล้างตัวกรอง
+                </button>
+            </div>
+        </div>
+
+        <!-- Academic Years & Tests Container -->
+        <div id="yearsContainer" class="space-y-6">
+            <!-- Dynamically rendered via JS -->
+        </div>
+
+    </main>
+
+    <!-- Minimal Footer -->
+    <footer class="bg-white border-t border-slate-200/80 mt-12">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
+            <div>
+                ระบบคลังแบบทดสอบ O-NET ออนไลน์ แยกตามปีการศึกษา
+            </div>
+            <div id="footerAdminActions" class="hidden items-center gap-3">
+                <button onclick="requestResetDemoData()" class="text-slate-400 hover:text-rose-600 transition">
+                    รีเซ็ตข้อมูลเริ่มต้น
+                </button>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ========================================== -->
+    <!-- MODAL 0: PASSWORD AUTHENTICATION (12345)   -->
+    <!-- ========================================== -->
+    <div id="passwordModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-shield-halved text-indigo-400"></i>
+                    <h3 id="passwordModalTitle" class="font-semibold text-sm sm:text-base">ยืนยันรหัสผ่านหลังบ้าน</h3>
+                </div>
+                <button onclick="closePasswordModal()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form onsubmit="submitPasswordCheck(event)" class="p-6 space-y-4">
+                <p id="passwordModalDesc" class="text-xs text-slate-500 leading-relaxed">
+                    กรุณากรอกรหัสผ่านผู้ดูแลระบบเพื่อเข้าใช้งานหรือทำรายการนี้
+                </p>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">รหัสผ่าน</label>
+                    <input
+                        type="password"
+                        id="adminPasswordInput"
+                        required
+                        placeholder="กรอกรหัสผ่าน..."
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-center text-lg tracking-widest font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600"
+                    >
+                    <p id="passwordErrorMsg" class="hidden text-xs text-rose-600 mt-1.5 text-center font-medium">
+                        <i class="fa-solid fa-circle-exclamation mr-1"></i>รหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง
+                    </p>
+                </div>
+
+                <div class="flex items-center gap-2 pt-2">
+                    <button type="button" onclick="closePasswordModal()" class="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+                        ยกเลิก
+                    </button>
+                    <button type="submit" class="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition">
+                        ยืนยันรหัสผ่าน
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL 1: ADD / EDIT ACADEMIC YEAR          -->
+    <!-- ========================================== -->
+    <div id="yearModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-calendar-plus text-indigo-400 text-lg"></i>
+                    <h3 id="yearModalTitle" class="font-semibold text-base">เพิ่มปีการศึกษา</h3>
+                </div>
+                <button onclick="closeYearModal()" class="text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form id="yearForm" onsubmit="handleSaveYear(event)" class="p-6 space-y-4">
+                <input type="hidden" id="editYearOriginalId">
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                        ปีการศึกษา (พ.ศ.) <span class="text-rose-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        id="yearInputName"
+                        required
+                        placeholder="เช่น 2569, 2568, 2567"
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600"
+                    >
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                        คำอธิบายเพิ่มเติม (ไม่บังคับ)
+                    </label>
+                    <input
+                        type="text"
+                        id="yearInputDesc"
+                        placeholder="เช่น แบบทดสอบ O-NET ประจำปีการศึกษา 2569"
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600"
+                    >
+                </div>
+
+                <!-- Quick Year Suggestions -->
+                <div class="pt-1">
+                    <span class="text-xs text-slate-400 block mb-1.5">เลือกปีการศึกษาด่วน:</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button type="button" onclick="fillQuickYear('2570')" class="px-2.5 py-1 rounded-lg text-xs bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition">2570</button>
+                        <button type="button" onclick="fillQuickYear('2569')" class="px-2.5 py-1 rounded-lg text-xs bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition">2569</button>
+                        <button type="button" onclick="fillQuickYear('2568')" class="px-2.5 py-1 rounded-lg text-xs bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition">2568</button>
+                        <button type="button" onclick="fillQuickYear('2567')" class="px-2.5 py-1 rounded-lg text-xs bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition">2567</button>
+                        <button type="button" onclick="fillQuickYear('2566')" class="px-2.5 py-1 rounded-lg text-xs bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 transition">2566</button>
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                    <button type="button" onclick="closeYearModal()" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition">
+                        ยกเลิก
+                    </button>
+                    <button type="submit" class="px-5 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition">
+                        บันทึกข้อมูล
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL 2: ADD / EDIT O-NET TEST LINK        -->
+    <!-- ========================================== -->
+    <div id="linkModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl border border-slate-200 overflow-hidden my-8">
+            <div class="px-6 py-4 bg-indigo-600 text-white flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-link text-indigo-200 text-lg"></i>
+                    <h3 id="linkModalTitle" class="font-semibold text-base">เพิ่มลิงก์การทดสอบ O-NET</h3>
+                </div>
+                <button onclick="closeLinkModal()" class="text-indigo-200 hover:text-white transition">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <form id="linkForm" onsubmit="handleSaveLink(event)" class="p-6 space-y-4">
+                <input type="hidden" id="linkInputId">
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Select or Create Academic Year -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label class="text-xs font-semibold text-slate-700">
+                                ปีการศึกษา <span class="text-rose-500">*</span>
+                            </label>
+                            <button type="button" onclick="toggleInlineNewYear()" class="text-[11px] font-medium text-indigo-600 hover:underline">
+                                + พิมพ์ปีใหม่เอง
+                            </button>
+                        </div>
+                        <select id="linkSelectYear" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600">
+                            <!-- Populated via JS -->
+                        </select>
+                        <input
+                            type="text"
+                            id="linkCustomYear"
+                            placeholder="ระบุปีการศึกษา เช่น 2569"
+                            class="hidden w-full px-3.5 py-2.5 rounded-xl border border-indigo-400 bg-indigo-50/40 text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                        >
+                    </div>
+
+                    <!-- Grade Level -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                            ระดับชั้น <span class="text-rose-500">*</span>
+                        </label>
+                        <select id="linkInputLevel" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600">
+                            <option value="ป.6">ประถมศึกษาปีที่ 6 (ป.6)</option>
+                            <option value="ม.3">มัธยมศึกษาปีที่ 3 (ม.3)</option>
+                            <option value="ม.6">มัธยมศึกษาปีที่ 6 (ม.6)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Subject -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                            รายวิชา <span class="text-rose-500">*</span>
+                        </label>
+                        <select id="linkInputSubject" required class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600">
+                            <option value="คณิตศาสตร์">คณิตศาสตร์</option>
+                            <option value="ภาษาไทย">ภาษาไทย</option>
+                            <option value="วิทยาศาสตร์">วิทยาศาสตร์</option>
+                            <option value="ภาษาอังกฤษ">ภาษาอังกฤษ</option>
+                            <option value="สังคมศึกษา">สังคมศึกษาฯ</option>
+                            <option value="รวมวิชา">รวมทุกรายวิชา / อื่นๆ</option>
+                        </select>
+                    </div>
+
+                    <!-- Meta Info -->
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                            รายละเอียดจำนวนข้อ/เวลา (ถ้ามี)
+                        </label>
+                        <input
+                            type="text"
+                            id="linkInputMeta"
+                            placeholder="เช่น 20 ข้อ • 60 นาที"
+                            class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600"
+                        >
+                    </div>
+                </div>
+
+                <!-- Test Title -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                        ชื่อชุดการทดสอบ <span class="text-rose-500">*</span>
+                    </label>
+                    <input
+                        type="text"
+                        id="linkInputTitle"
+                        required
+                        placeholder="เช่น แบบทดสอบ O-NET คณิตศาสตร์ ป.6 ชุดที่ 1"
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600"
+                    >
+                </div>
+
+                <!-- Test URL -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 mb-1.5">
+                        ลิงก์เข้าสู่ตัวการทดสอบ (URL) <span class="text-rose-500">*</span>
+                    </label>
+                    <input
+                        type="url"
+                        id="linkInputUrl"
+                        required
+                        placeholder="วางลิงก์แบบทดสอบที่นี่ (https://...)"
+                        class="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-600"
+                    >
+                </div>
+
+                <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                    <button type="button" onclick="closeLinkModal()" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition">
+                        ยกเลิก
+                    </button>
+                    <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition">
+                        บันทึกลิงก์การทดสอบ
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL 3: PASSWORD-PROTECTED DELETE/ACTION  -->
+    <!-- ========================================== -->
+    <div id="confirmModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-slate-200 p-6 text-center space-y-4">
+            <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center text-xl">
+                <i class="fa-solid fa-trash-can"></i>
+            </div>
+            <div class="space-y-1">
+                <h4 id="confirmTitle" class="font-bold text-base text-slate-900">ยืนยันการลบข้อมูล</h4>
+                <p id="confirmMessage" class="text-xs text-slate-500 leading-relaxed"></p>
+            </div>
+            <div class="text-left">
+                <label class="block text-xs font-semibold text-slate-700 mb-1">กรอกรหัสผ่านเพื่อยืนยัน (12345)</label>
+                <input
+                    type="password"
+                    id="confirmPasswordInput"
+                    placeholder="รหัสผ่านหลังบ้าน..."
+                    class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-center text-sm font-semibold tracking-widest focus:outline-none focus:ring-2 focus:ring-rose-500/30 focus:border-rose-500"
+                >
+                <p id="confirmPasswordError" class="hidden text-xs text-rose-600 mt-1 text-center font-medium">รหัสผ่านไม่ถูกต้อง</p>
+            </div>
+            <div class="flex items-center justify-center gap-2.5 pt-1">
+                <button onclick="closeConfirmModal()" class="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+                    ยกเลิก
+                </button>
+                <button id="confirmActionBtn" class="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 transition">
+                    ยืนยันการลบ
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Application JavaScript -->
+    <script>
+        const STORAGE_KEY = 'onet_clean_portal_data_v2';
+        const ADMIN_PASSWORD = '12345';
+
+        // ฝังลิงก์ Google Apps Script Web App สำหรับเชื่อมต่อฐานข้อมูลโดยตรงในระบบหลังบ้านของผู้พัฒนา
+        const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwuVBAiKrBWwcmYe3mHa3ZiwFydYgL1n984uuAsYZBUdRCdRq1cyXzfhD_LIoKG46YHGA/exec';
+
+        // Default is always clean Student/Player view (false)
+        let isBackofficeUnlocked = false;
+        let pendingPasswordCallback = null;
+        let isSyncingSheet = false;
+
+        // Default initial data
+        const DEFAULT_DATA = {
+            years: [
+                {
+                    id: '2568',
+                    name: '2568',
+                    description: 'แบบทดสอบวัดผลสัมฤทธิ์ทางการเรียน O-NET ประจำปีการศึกษา 2568',
+                    collapsed: false
+                },
+                {
+                    id: '2567',
+                    name: '2567',
+                    description: 'แบบทดสอบวัดผลสัมฤทธิ์ทางการเรียน O-NET ประจำปีการศึกษา 2567',
+                    collapsed: false
+                },
+                {
+                    id: '2566',
+                    name: '2566',
+                    description: 'แบบทดสอบวัดผลสัมฤทธิ์ทางการเรียน O-NET ประจำปีการศึกษา 2566',
+                    collapsed: false
+                }
+            ],
+            links: [
+                {
+                    id: 'lnk-101',
+                    yearId: '2568',
+                    level: 'ป.6',
+                    subject: 'คณิตศาสตร์',
+                    title: 'แบบทดสอบ O-NET วิชาคณิตศาสตร์ ชั้นประถมศึกษาปีที่ 6',
+                    url: 'https://niets-onet-demo.github.io/onet-2568/math-p6/',
+                    meta: '20 ข้อ • 60 นาที'
+                },
+                {
+                    id: 'lnk-102',
+                    yearId: '2568',
+                    level: 'ป.6',
+                    subject: 'วิทยาศาสตร์',
+                    title: 'แบบทดสอบ O-NET วิชาวิทยาศาสตร์ ชั้นประถมศึกษาปีที่ 6',
+                    url: 'https://niets-onet-demo.github.io/onet-2568/science-p6/',
+                    meta: '30 ข้อ • 60 นาที'
+                },
+                {
+                    id: 'lnk-103',
+                    yearId: '2568',
+                    level: 'ม.3',
+                    subject: 'ภาษาอังกฤษ',
+                    title: 'แบบทดสอบ O-NET วิชาภาษาอังกฤษ ชั้นมัธยมศึกษาปีที่ 3',
+                    url: 'https://niets-onet-demo.github.io/onet-2568/eng-m3/',
+                    meta: '40 ข้อ • 90 นาที'
+                },
+                {
+                    id: 'lnk-104',
+                    yearId: '2567',
+                    level: 'ม.3',
+                    subject: 'ภาษาไทย',
+                    title: 'แบบทดสอบ O-NET วิชาภาษาไทย ชั้นมัธยมศึกษาปีที่ 3',
+                    url: 'https://niets-onet-demo.github.io/onet-2567/thai-m3/',
+                    meta: '35 ข้อ • 90 นาที'
+                },
+                {
+                    id: 'lnk-105',
+                    yearId: '2567',
+                    level: 'ม.6',
+                    subject: 'สังคมศึกษา',
+                    title: 'แบบทดสอบ O-NET วิชาสังคมศึกษาฯ ชั้นมัธยมศึกษาปีที่ 6',
+                    url: 'https://niets-onet-demo.github.io/onet-2567/social-m6/',
+                    meta: '50 ข้อ • 120 นาที'
+                },
+                {
+                    id: 'lnk-106',
+                    yearId: '2566',
+                    level: 'ป.6',
+                    subject: 'ภาษาไทย',
+                    title: 'แบบทดสอบ O-NET วิชาภาษาไทย ชั้นประถมศึกษาปีที่ 6',
+                    url: 'https://niets-onet-demo.github.io/onet-2566/thai-p6/',
+                    meta: '30 ข้อ • 60 นาที'
+                }
+            ]
+        };
+
+        let appData = loadData();
+
+        function loadData() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && Array.isArray(parsed.years) && Array.isArray(parsed.links)) {
+                        return parsed;
+                    }
+                }
+            } catch (e) {
+                console.error('Error loading data:', e);
+            }
+            return JSON.parse(JSON.stringify(DEFAULT_DATA));
+        }
+
+        function saveData() {
+            try {
+                appData.years.sort((a, b) => b.name.localeCompare(a.name, 'th', { numeric: true }));
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+            } catch (e) {
+                console.error('Error saving data:', e);
+            }
+        }
+
+        // ==========================================
+        // GOOGLE SHEETS (APPS SCRIPT) INTEGRATION
+        // ==========================================
+        function getGasUrl() {
+            return GAS_WEB_APP_URL;
+        }
+
+        function updateSheetStatusBadge(state = 'idle') {
+            const dot = document.getElementById('sheetStatusDot');
+            const txt = document.getElementById('sheetStatusText');
+            if (!dot || !txt) return;
+
+            if (state === 'loading') {
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping';
+                txt.textContent = 'กำลังซิงค์ข้อมูล...';
+            } else if (state === 'error') {
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+                txt.textContent = 'ซิงค์ฐานข้อมูลไม่สำเร็จ';
+            } else {
+                dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse';
+                txt.textContent = 'ซิงค์ฐานข้อมูลอัตโนมัติ';
+            }
+        }
+
+        async function fetchFromGoogleSheets(showNotification = false) {
+            const url = getGasUrl();
+            if (!url) return;
+
+            try {
+                isSyncingSheet = true;
+                updateSheetStatusBadge('loading');
+
+                const sep = url.includes('?') ? '&' : '?';
+                const res = await fetch(`${url}${sep}action=getAll&t=${Date.now()}`, {
+                    method: 'GET',
+                    redirect: 'follow'
+                });
+                const json = await res.json();
+
+                if (json && json.status === 'success' && json.data) {
+                    appData = {
+                        years: Array.isArray(json.data.years) ? json.data.years : [],
+                        links: Array.isArray(json.data.links) ? json.data.links : []
+                    };
+                    saveData();
+                    renderAll();
+                    updateSheetStatusBadge('idle');
+                    if (showNotification) showToast('อัปเดตข้อมูลล่าสุดเรียบร้อยแล้ว');
+                } else {
+                    throw new Error((json && json.message) || 'Invalid response');
+                }
+            } catch (err) {
+                console.error('Database Sync Error:', err);
+                updateSheetStatusBadge('error');
+            } finally {
+                isSyncingSheet = false;
+            }
+        }
+
+        async function postToGoogleSheets(payload, showSuccessToast = false) {
+            const url = getGasUrl();
+            if (!url) return false;
+
+            try {
+                updateSheetStatusBadge('loading');
+                const res = await fetch(url, {
+                    method: 'POST',
+                    redirect: 'follow',
+                    headers: {
+                        'Content-Type': 'text/plain;charset=utf8'
+                    },
+                    body: JSON.stringify({
+                        ...payload,
+                        password: ADMIN_PASSWORD
+                    })
+                });
+
+                const json = await res.json();
+                if (json && json.status === 'success') {
+                    if (json.data) {
+                        appData = json.data;
+                        saveData();
+                        renderAll();
+                    }
+                    updateSheetStatusBadge('idle');
+                    if (showSuccessToast) showToast('บันทึกข้อมูลลงฐานข้อมูลสำเร็จ');
+                    return true;
+                } else {
+                    throw new Error((json && json.message) || 'Save error');
+                }
+            } catch (err) {
+                console.error('Database POST Error:', err);
+                updateSheetStatusBadge('error');
+                showToast('เกิดข้อผิดพลาดในการซิงค์ฐานข้อมูล', 'warning');
+                return false;
+            }
+        }
+
+        // ==========================================
+        // PASSWORD PROTECTION & BACKOFFICE SYSTEM
+        // ==========================================
+        function requirePassword(title, desc, callback) {
+            pendingPasswordCallback = callback;
+            document.getElementById('passwordModalTitle').textContent = title || 'ยืนยันรหัสผ่านหลังบ้าน';
+            document.getElementById('passwordModalDesc').textContent = desc || 'กรุณากรอกรหัสผ่านผู้ดูแลระบบเพื่อดำเนินการต่อ';
+            document.getElementById('adminPasswordInput').value = '';
+            document.getElementById('passwordErrorMsg').classList.add('hidden');
+
+            const modal = document.getElementById('passwordModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => document.getElementById('adminPasswordInput').focus(), 50);
+        }
+
+        function closePasswordModal() {
+            const modal = document.getElementById('passwordModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            pendingPasswordCallback = null;
+        }
+
+        function submitPasswordCheck(e) {
+            e.preventDefault();
+            const val = document.getElementById('adminPasswordInput').value;
+            if (val === ADMIN_PASSWORD) {
+                const cb = pendingPasswordCallback;
+                closePasswordModal();
+                if (typeof cb === 'function') cb();
+            } else {
+                document.getElementById('passwordErrorMsg').classList.remove('hidden');
+                document.getElementById('adminPasswordInput').select();
+            }
+        }
+
+        function handleBackofficeToggle() {
+            if (isBackofficeUnlocked) {
+                exitBackoffice();
+            } else {
+                requirePassword(
+                    'เข้าสู่ระบบหลังบ้าน',
+                    'กรุณากรอกรหัสผ่านเพื่อเปิดระบบจัดการปีการศึกษาและลิงก์แบบทดสอบ',
+                    () => {
+                        isBackofficeUnlocked = true;
+                        updateBackofficeUI();
+                        showToast('เข้าสู่ระบบจัดการหลังบ้านเรียบร้อยแล้ว');
+                    }
+                );
+            }
+        }
+
+        function exitBackoffice() {
+            isBackofficeUnlocked = false;
+            updateBackofficeUI();
+            showToast('ออกจากระบบหลังบ้านแล้ว');
+        }
+
+        function updateBackofficeUI() {
+            const bar = document.getElementById('backofficeBar');
+            const btnText = document.getElementById('adminBtnText');
+            const btnIcon = document.getElementById('adminBtnIcon');
+            const btn = document.getElementById('adminToggleBtn');
+            const footerAdmin = document.getElementById('footerAdminActions');
+
+            if (isBackofficeUnlocked) {
+                bar.classList.remove('hidden');
+                footerAdmin.classList.remove('hidden');
+                footerAdmin.classList.add('flex');
+                btnText.textContent = 'ปิดโหมดหลังบ้าน';
+                btnIcon.className = 'fa-solid fa-unlock-keyhole text-emerald-600';
+                btn.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition';
+            } else {
+                bar.classList.add('hidden');
+                footerAdmin.classList.add('hidden');
+                footerAdmin.classList.remove('flex');
+                btnText.textContent = 'ระบบหลังบ้าน';
+                btnIcon.className = 'fa-solid fa-lock text-slate-400';
+                btn.className = 'inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition shadow-2xs';
+            }
+            updateSheetStatusBadge();
+            renderAll();
+        }
+
+        // Styling helpers by Subject & Grade Level
+        function getSubjectBadgeStyle(subject) {
+            const map = {
+                'คณิตศาสตร์': {
+                    bg: 'bg-indigo-50 text-indigo-700 border-indigo-200/80',
+                    icon: 'fa-calculator',
+                    accent: 'border-t-indigo-500'
+                },
+                'วิทยาศาสตร์': {
+                    bg: 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
+                    icon: 'fa-flask',
+                    accent: 'border-t-emerald-500'
+                },
+                'ภาษาไทย': {
+                    bg: 'bg-amber-50 text-amber-800 border-amber-200/80',
+                    icon: 'fa-book-open',
+                    accent: 'border-t-amber-500'
+                },
+                'ภาษาอังกฤษ': {
+                    bg: 'bg-rose-50 text-rose-700 border-rose-200/80',
+                    icon: 'fa-language',
+                    accent: 'border-t-rose-500'
+                },
+                'สังคมศึกษา': {
+                    bg: 'bg-purple-50 text-purple-700 border-purple-200/80',
+                    icon: 'fa-earth-asia',
+                    accent: 'border-t-purple-500'
+                }
+            };
+            return map[subject] || {
+                bg: 'bg-sky-50 text-sky-700 border-sky-200/80',
+                icon: 'fa-layer-group',
+                accent: 'border-t-sky-500'
+            };
+        }
+
+        function getLevelBadgeStyle(level) {
+            if (level === 'ป.6') return 'bg-sky-100 text-sky-800';
+            if (level === 'ม.3') return 'bg-violet-100 text-violet-800';
+            if (level === 'ม.6') return 'bg-amber-100 text-amber-900';
+            return 'bg-slate-100 text-slate-700';
+        }
+
+        // Render entire UI
+        function renderAll() {
+            updateStats();
+            populateYearDropdowns();
+            renderQuickYearPills();
+            renderYearSections();
+        }
+
+        function updateStats() {
+            document.getElementById('statTotalYears').textContent = appData.years.length;
+            document.getElementById('statTotalLinks').textContent = appData.links.length;
+        }
+
+        function populateYearDropdowns() {
+            const filterYearEl = document.getElementById('filterYear');
+            const currentFilterVal = filterYearEl.value || 'all';
+
+            filterYearEl.innerHTML = `<option value="all">ทุกปีการศึกษา</option>`;
+            appData.years.forEach(yr => {
+                const count = appData.links.filter(l => l.yearId === yr.id).length;
+                const opt = document.createElement('option');
+                opt.value = yr.id;
+                opt.textContent = `ปีการศึกษา ${yr.name} (${count})`;
+                filterYearEl.appendChild(opt);
+            });
+
+            if ([...filterYearEl.options].some(o => o.value === currentFilterVal)) {
+                filterYearEl.value = currentFilterVal;
+            } else {
+                filterYearEl.value = 'all';
+            }
+
+            // Update modal year select
+            const linkSelectYear = document.getElementById('linkSelectYear');
+            const prevSelected = linkSelectYear.value;
+            linkSelectYear.innerHTML = '';
+            appData.years.forEach(yr => {
+                const opt = document.createElement('option');
+                opt.value = yr.id;
+                opt.textContent = `ปีการศึกษา ${yr.name}`;
+                linkSelectYear.appendChild(opt);
+            });
+            if (prevSelected && [...linkSelectYear.options].some(o => o.value === prevSelected)) {
+                linkSelectYear.value = prevSelected;
+            }
+        }
+
+        function renderQuickYearPills() {
+            const container = document.getElementById('yearQuickPills');
+            const activeYear = document.getElementById('filterYear').value;
+
+            let html = `
+                <span class="text-xs font-medium text-slate-400 mr-1">ปีการศึกษา:</span>
+                <button onclick="setYearFilter('all')" class="px-3 py-1 rounded-full text-xs font-medium transition ${activeYear === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">
+                    ทั้งหมด
+                </button>
+            `;
+
+            appData.years.forEach(yr => {
+                const isActive = activeYear === yr.id;
+                html += `
+                    <button onclick="setYearFilter('${escapeHtml(yr.id)}')" class="px-3.5 py-1 rounded-full text-xs font-medium transition ${isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                        ${escapeHtml(yr.name)}
+                    </button>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function setYearFilter(yearId) {
+            document.getElementById('filterYear').value = yearId;
+            renderAll();
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            renderAll();
+        }
+
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('filterYear').value = 'all';
+            document.getElementById('filterLevel').value = 'all';
+            document.getElementById('filterSubject').value = 'all';
+            renderAll();
+        }
+
+        function renderYearSections() {
+            const container = document.getElementById('yearsContainer');
+            const query = document.getElementById('searchInput').value.trim().toLowerCase();
+            const selectedYear = document.getElementById('filterYear').value;
+            const selectedLevel = document.getElementById('filterLevel').value;
+            const selectedSubject = document.getElementById('filterSubject').value;
+
+            document.getElementById('clearSearchBtn').classList.toggle('hidden', !query);
+
+            if (appData.years.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-slate-200 p-12 text-center space-y-3">
+                        <div class="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center text-xl">
+                            <i class="fa-regular fa-folder-open"></i>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-800">ยังไม่มีรายการปีการศึกษา</h3>
+                        <p class="text-xs text-slate-500">ผู้ดูแลระบบสามารถเพิ่มปีการศึกษาและแบบทดสอบได้ที่ปุ่ม "ระบบหลังบ้าน"</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let visibleSectionsHtml = '';
+            let hasAnyMatch = false;
+
+            appData.years.forEach(yr => {
+                if (selectedYear !== 'all' && yr.id !== selectedYear) return;
+
+                const linksForYear = appData.links.filter(item => {
+                    if (item.yearId !== yr.id) return false;
+                    if (selectedLevel !== 'all' && item.level !== selectedLevel) return false;
+                    if (selectedSubject !== 'all' && item.subject !== selectedSubject) return false;
+                    if (query) {
+                        const haystack = `${item.title} ${item.subject} ${item.level}`.toLowerCase();
+                        return haystack.includes(query);
+                    }
+                    return true;
+                });
+
+                const isFilteringSub = query !== '' || selectedLevel !== 'all' || selectedSubject !== 'all';
+                if (isFilteringSub && linksForYear.length === 0) return;
+
+                hasAnyMatch = true;
+
+                let cardsHtml = '';
+                if (linksForYear.length === 0) {
+                    cardsHtml = `
+                        <div class="col-span-full py-8 text-center text-sm text-slate-400">
+                            ยังไม่มีชุดแบบทดสอบในปีการศึกษา ${escapeHtml(yr.name)}
+                        </div>
+                    `;
+                } else {
+                    cardsHtml = linksForYear.map(link => renderLinkCard(link)).join('');
+                }
+
+                visibleSectionsHtml += `
+                    <section class="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+                        <!-- Year Header Bar -->
+                        <div class="px-5 py-4 sm:px-6 bg-slate-50/70 border-b border-slate-200/70 flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 cursor-pointer select-none" onclick="toggleYearCollapse('${escapeHtml(yr.id)}')">
+                                <span class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs transition">
+                                    <i class="fa-solid ${yr.collapsed ? 'fa-chevron-right' : 'fa-chevron-down'}"></i>
+                                </span>
+                                <div>
+                                    <div class="flex items-center gap-2.5 flex-wrap">
+                                        <h3 class="text-base sm:text-lg font-bold text-slate-900">
+                                            ปีการศึกษา ${escapeHtml(yr.name)}
+                                        </h3>
+                                        <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700">
+                                            ${linksForYear.length} ชุดข้อสอบ
+                                        </span>
+                                    </div>
+                                    ${yr.description ? `<p class="text-xs text-slate-500 mt-0.5">${escapeHtml(yr.description)}</p>` : ''}
+                                </div>
+                            </div>
+
+                            <!-- Back-Office Only Actions -->
+                            ${isBackofficeUnlocked ? `
+                                <div class="flex items-center gap-1.5">
+                                    <button onclick="openLinkModal('${escapeHtml(yr.id)}')" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition">
+                                        <i class="fa-solid fa-plus"></i>
+                                        <span>เพิ่มข้อสอบปี ${escapeHtml(yr.name)}</span>
+                                    </button>
+                                    <button onclick="requestEditYear('${escapeHtml(yr.id)}')" class="p-2 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-slate-200/60 transition" title="แก้ไขปีการศึกษา">
+                                        <i class="fa-regular fa-pen-to-square"></i>
+                                    </button>
+                                    <button onclick="confirmDeleteYear('${escapeHtml(yr.id)}')" class="p-2 rounded-xl text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition" title="ลบปีการศึกษา">
+                                        <i class="fa-regular fa-trash-can"></i>
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- Clean Test Cards Grid -->
+                        <div class="${yr.collapsed ? 'hidden' : 'p-5 sm:p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'}">
+                            ${cardsHtml}
+                        </div>
+                    </section>
+                `;
+            });
+
+            if (!hasAnyMatch) {
+                container.innerHTML = `
+                    <div class="bg-white rounded-2xl border border-slate-200 p-10 text-center space-y-3">
+                        <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center text-xl">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </div>
+                        <h4 class="font-semibold text-slate-800">ไม่พบชุดแบบทดสอบที่ค้นหา</h4>
+                        <button onclick="resetFilters()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition">
+                            แสดงแบบทดสอบทั้งหมด
+                        </button>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = visibleSectionsHtml;
+            }
+        }
+
+        function renderLinkCard(link) {
+            const style = getSubjectBadgeStyle(link.subject);
+            const levelClass = getLevelBadgeStyle(link.level);
+
+            return `
+                <article class="card-hover bg-white rounded-2xl border border-slate-200/90 border-t-4 ${style.accent} p-5 flex flex-col justify-between gap-5">
+                    <div class="space-y-3">
+                        <!-- Top Badges Row -->
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="px-2.5 py-1 rounded-lg text-xs font-bold ${levelClass}">
+                                    ${escapeHtml(link.level)}
+                                </span>
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${style.bg}">
+                                    <i class="fa-solid ${style.icon} text-[11px]"></i>
+                                    ${escapeHtml(link.subject)}
+                                </span>
+                            </div>
+
+                            ${isBackofficeUnlocked ? `
+                                <div class="flex items-center gap-1">
+                                    <button onclick="requestEditLink('${escapeHtml(link.id)}')" class="w-7 h-7 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 flex items-center justify-center transition" title="แก้ไขรายการสอบ">
+                                        <i class="fa-solid fa-pen text-xs"></i>
+                                    </button>
+                                    <button onclick="confirmDeleteLink('${escapeHtml(link.id)}')" class="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition" title="ลบรายการสอบ">
+                                        <i class="fa-solid fa-trash text-xs"></i>
+                                    </button>
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- Test Title -->
+                        <h4 class="font-bold text-slate-900 text-base leading-snug">
+                            ${escapeHtml(link.title)}
+                        </h4>
+
+                        <!-- Optional Exam Metadata (Questions / Time) -->
+                        ${link.meta ? `
+                            <div class="inline-flex items-center gap-1.5 text-xs text-slate-500">
+                                <i class="fa-regular fa-clock text-slate-400"></i>
+                                <span>${escapeHtml(link.meta)}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Direct Start Test Button -->
+                    <div>
+                        <a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition">
+                            <span>เริ่มทำแบบทดสอบ</span>
+                            <i class="fa-solid fa-arrow-right text-xs"></i>
+                        </a>
+                    </div>
+                </article>
+            `;
+        }
+
+        function toggleYearCollapse(yearId) {
+            const yr = appData.years.find(y => y.id === yearId);
+            if (yr) {
+                yr.collapsed = !yr.collapsed;
+                saveData();
+                renderAll();
+            }
+        }
+
+        // ==========================================
+        // ACADEMIC YEAR MODAL LOGIC (PASSWORD GUARDED)
+        // ==========================================
+        function requestEditYear(yearId) {
+            requirePassword(
+                'ยืนยันรหัสผ่านเพื่อแก้ไขปีการศึกษา',
+                'กรุณากรอกรหัสผ่านผู้ดูแลระบบ (12345) เพื่อแก้ไขข้อมูลปีการศึกษา',
+                () => openYearModal(yearId)
+            );
+        }
+
+        function openYearModal(editYearId = null) {
+            if (!isBackofficeUnlocked) {
+                requirePassword('ยืนยันรหัสผ่านหลังบ้าน', 'กรอกรหัสผ่านเพื่อเพิ่มหรือแก้ไขปีการศึกษา', () => {
+                    isBackofficeUnlocked = true;
+                    updateBackofficeUI();
+                    openYearModal(editYearId);
+                });
+                return;
+            }
+
+            const modal = document.getElementById('yearModal');
+            const titleEl = document.getElementById('yearModalTitle');
+            const origInput = document.getElementById('editYearOriginalId');
+            const nameInput = document.getElementById('yearInputName');
+            const descInput = document.getElementById('yearInputDesc');
+
+            if (editYearId) {
+                const yr = appData.years.find(y => y.id === editYearId);
+                if (!yr) return;
+                titleEl.textContent = `แก้ไขปีการศึกษา ${yr.name}`;
+                origInput.value = yr.id;
+                nameInput.value = yr.name;
+                descInput.value = yr.description || '';
+            } else {
+                titleEl.textContent = 'เพิ่มปีการศึกษาใหม่';
+                origInput.value = '';
+                nameInput.value = '';
+                descInput.value = '';
+            }
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => nameInput.focus(), 50);
+        }
+
+        function closeYearModal() {
+            const modal = document.getElementById('yearModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function fillQuickYear(yearStr) {
+            document.getElementById('yearInputName').value = yearStr;
+            document.getElementById('yearInputDesc').value = `แบบทดสอบวัดผลสัมฤทธิ์ทางการเรียน O-NET ประจำปีการศึกษา ${yearStr}`;
+        }
+
+        function handleSaveYear(e) {
+            e.preventDefault();
+            const origId = document.getElementById('editYearOriginalId').value.trim();
+            const name = document.getElementById('yearInputName').value.trim();
+            const description = document.getElementById('yearInputDesc').value.trim();
+
+            if (!name) return;
+
+            let savedYearObj = null;
+
+            if (origId) {
+                const yr = appData.years.find(y => y.id === origId);
+                if (yr) {
+                    const newId = name;
+                    if (newId !== origId) {
+                        appData.links.forEach(l => {
+                            if (l.yearId === origId) l.yearId = newId;
+                        });
+                    }
+                    yr.id = newId;
+                    yr.name = name;
+                    yr.description = description;
+                    savedYearObj = yr;
+                    showToast(`แก้ไขปีการศึกษา ${name} เรียบร้อยแล้ว`);
+                }
+            } else {
+                const exists = appData.years.some(y => y.id === name || y.name === name);
+                if (exists) {
+                    showToast(`มีปีการศึกษา ${name} อยู่ในระบบแล้ว`, 'warning');
+                    return;
+                }
+                savedYearObj = {
+                    id: name,
+                    name: name,
+                    description: description || `แบบทดสอบวัดผลสัมฤทธิ์ทางการเรียน O-NET ประจำปีการศึกษา ${name}`,
+                    collapsed: false
+                };
+                appData.years.push(savedYearObj);
+                showToast(`เพิ่มปีการศึกษา ${name} สำเร็จ`);
+            }
+
+            saveData();
+            closeYearModal();
+            renderAll();
+
+            if (savedYearObj && getGasUrl()) {
+                postToGoogleSheets({
+                    action: 'saveYear',
+                    year: savedYearObj,
+                    originalId: origId || savedYearObj.id
+                });
+            }
+        }
+
+        // ==========================================
+        // O-NET LINK MODAL LOGIC (PASSWORD GUARDED)
+        // ==========================================
+        let isCustomYearMode = false;
+
+        function toggleInlineNewYear(forceState = null) {
+            isCustomYearMode = forceState !== null ? forceState : !isCustomYearMode;
+            const selectEl = document.getElementById('linkSelectYear');
+            const customEl = document.getElementById('linkCustomYear');
+
+            if (isCustomYearMode) {
+                selectEl.classList.add('hidden');
+                customEl.classList.remove('hidden');
+                customEl.focus();
+            } else {
+                selectEl.classList.remove('hidden');
+                customEl.classList.add('hidden');
+                customEl.value = '';
+            }
+        }
+
+        function openLinkModal(preselectYearId = null) {
+            if (!isBackofficeUnlocked) {
+                requirePassword('ยืนยันรหัสผ่านหลังบ้าน', 'กรอกรหัสผ่านเพื่อเพิ่มลิงก์การทดสอบ', () => {
+                    isBackofficeUnlocked = true;
+                    updateBackofficeUI();
+                    openLinkModal(preselectYearId);
+                });
+                return;
+            }
+
+            populateYearDropdowns();
+            toggleInlineNewYear(appData.years.length === 0);
+
+            document.getElementById('linkModalTitle').textContent = 'เพิ่มลิงก์การทดสอบ O-NET';
+            document.getElementById('linkInputId').value = '';
+            document.getElementById('linkInputTitle').value = '';
+            document.getElementById('linkInputUrl').value = '';
+            document.getElementById('linkInputMeta').value = '';
+            document.getElementById('linkInputLevel').value = 'ป.6';
+            document.getElementById('linkInputSubject').value = 'คณิตศาสตร์';
+
+            if (preselectYearId) {
+                document.getElementById('linkSelectYear').value = preselectYearId;
+            }
+
+            const modal = document.getElementById('linkModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function requestEditLink(linkId) {
+            requirePassword(
+                'ยืนยันรหัสผ่านเพื่อแก้ไขข้อสอบ',
+                'กรุณากรอกรหัสผ่านผู้ดูแลระบบ (12345) เพื่อแก้ไขข้อมูลแบบทดสอบนี้',
+                () => openEditLinkModal(linkId)
+            );
+        }
+
+        function openEditLinkModal(linkId) {
+            const item = appData.links.find(l => l.id === linkId);
+            if (!item) return;
+
+            populateYearDropdowns();
+            toggleInlineNewYear(false);
+
+            document.getElementById('linkModalTitle').textContent = 'แก้ไขลิงก์แบบทดสอบ O-NET';
+            document.getElementById('linkInputId').value = item.id;
+            document.getElementById('linkSelectYear').value = item.yearId;
+            document.getElementById('linkInputLevel').value = item.level;
+            document.getElementById('linkInputSubject').value = item.subject;
+            document.getElementById('linkInputTitle').value = item.title;
+            document.getElementById('linkInputUrl').value = item.url;
+            document.getElementById('linkInputMeta').value = item.meta || '';
+
+            const modal = document.getElementById('linkModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeLinkModal() {
+            const modal = document.getElementById('linkModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function handleSaveLink(e) {
+            e.preventDefault();
+            const linkId = document.getElementById('linkInputId').value.trim();
+            let yearId = document.getElementById('linkSelectYear').value;
+
+            if (isCustomYearMode) {
+                const customYearName = document.getElementById('linkCustomYear').value.trim();
+                if (!customYearName) {
+                    showToast('กรุณาระบุปีการศึกษา', 'warning');
+                    return;
+                }
+                yearId = customYearName;
+                if (!appData.years.some(y => y.id === customYearName)) {
+                    appData.years.push({
+                        id: customYearName,
+                        name: customYearName,
+                        description: `แบบทดสอบวัดผลสัมฤทธิ์ทางการเรียน O-NET ประจำปีการศึกษา ${customYearName}`,
+                        collapsed: false
+                    });
+                }
+            }
+
+            const payload = {
+                id: linkId || 'lnk-' + Date.now(),
+                yearId: yearId,
+                level: document.getElementById('linkInputLevel').value,
+                subject: document.getElementById('linkInputSubject').value,
+                title: document.getElementById('linkInputTitle').value.trim(),
+                url: document.getElementById('linkInputUrl').value.trim(),
+                meta: document.getElementById('linkInputMeta').value.trim()
+            };
+
+            if (linkId) {
+                const idx = appData.links.findIndex(l => l.id === linkId);
+                if (idx > -1) appData.links[idx] = payload;
+                showToast('บันทึกการแก้ไขเรียบร้อยแล้ว');
+            } else {
+                appData.links.unshift(payload);
+                const yr = appData.years.find(y => y.id === yearId);
+                if (yr) yr.collapsed = false;
+                showToast(`เพิ่มแบบทดสอบในปีการศึกษา ${yearId} สำเร็จ`);
+            }
+
+            saveData();
+            closeLinkModal();
+            renderAll();
+
+            if (getGasUrl()) {
+                postToGoogleSheets({
+                    action: 'saveLink',
+                    link: payload
+                });
+            }
+        }
+
+        // ==========================================
+        // PASSWORD-PROTECTED DELETE & RESET
+        // ==========================================
+        function openConfirmModal(title, message, onConfirm) {
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            const passInput = document.getElementById('confirmPasswordInput');
+            const errEl = document.getElementById('confirmPasswordError');
+            passInput.value = '';
+            errEl.classList.add('hidden');
+
+            const btn = document.getElementById('confirmActionBtn');
+            btn.onclick = () => {
+                if (passInput.value !== ADMIN_PASSWORD) {
+                    errEl.classList.remove('hidden');
+                    passInput.select();
+                    return;
+                }
+                onConfirm();
+                closeConfirmModal();
+            };
+
+            const modal = document.getElementById('confirmModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            setTimeout(() => passInput.focus(), 50);
+        }
+
+        function closeConfirmModal() {
+            const modal = document.getElementById('confirmModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function confirmDeleteYear(yearId) {
+            const count = appData.links.filter(l => l.yearId === yearId).length;
+            openConfirmModal(
+                `ลบปีการศึกษา ${yearId}?`,
+                `การลบปีการศึกษา ${yearId} จะลบแบบทดสอบข้างในทั้งหมด (${count} ชุด) ออกจากระบบ`,
+                () => {
+                    appData.years = appData.years.filter(y => y.id !== yearId);
+                    appData.links = appData.links.filter(l => l.yearId !== yearId);
+                    saveData();
+                    renderAll();
+                    showToast(`ลบปีการศึกษา ${yearId} เรียบร้อยแล้ว`);
+                    if (getGasUrl()) {
+                        postToGoogleSheets({
+                            action: 'deleteYear',
+                            yearId: yearId
+                        });
+                    }
+                }
+            );
+        }
+
+        function confirmDeleteLink(linkId) {
+            const item = appData.links.find(l => l.id === linkId);
+            if (!item) return;
+            openConfirmModal(
+                'ลบชุดแบบทดสอบนี้?',
+                `ต้องการลบ "${item.title}" (ปีการศึกษา ${item.yearId}) ออกจากระบบหรือไม่?`,
+                () => {
+                    appData.links = appData.links.filter(l => l.id !== linkId);
+                    saveData();
+                    renderAll();
+                    showToast('ลบชุดแบบทดสอบเรียบร้อยแล้ว');
+                    if (getGasUrl()) {
+                        postToGoogleSheets({
+                            action: 'deleteLink',
+                            linkId: linkId
+                        });
+                    }
+                }
+            );
+        }
+
+        function requestResetDemoData() {
+            openConfirmModal(
+                'รีเซ็ตเป็นข้อมูลเริ่มต้น?',
+                'ข้อมูลปีการศึกษาและลิงก์ทั้งหมดจะถูกรีเซ็ตกลับเป็นข้อมูลเริ่มต้น',
+                () => {
+                    appData = JSON.parse(JSON.stringify(DEFAULT_DATA));
+                    saveData();
+                    renderAll();
+                    showToast('รีเซ็ตข้อมูลเริ่มต้นเรียบร้อยแล้ว');
+                    if (getGasUrl()) {
+                        postToGoogleSheets({
+                            action: 'resetDefault'
+                        });
+                    }
+                }
+            );
+        }
+
+        // ==========================================
+        // UTILITIES: TOAST & ESCAPING
+        // ==========================================
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const bgClass = type === 'warning'
+                ? 'bg-amber-600 text-white'
+                : 'bg-slate-900 text-white border border-slate-700';
+            const iconClass = type === 'warning'
+                ? 'fa-triangle-exclamation text-amber-200'
+                : 'fa-circle-check text-emerald-400';
+
+            toast.className = `${bgClass} px-4 py-3 rounded-xl shadow-lg text-xs sm:text-sm font-medium flex items-center gap-2.5 pointer-events-auto transition-all duration-300`;
+            toast.innerHTML = `<i class="fa-solid ${iconClass}"></i><span>${escapeHtml(message)}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(8px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 2600);
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // Initialize on page load
+        window.onload = function() {
+            renderAll();
+            updateSheetStatusBadge();
+            if (getGasUrl()) {
+                fetchFromGoogleSheets(false);
+            }
+        };
+    </script>
+</body>
+</html>
