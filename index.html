@@ -395,6 +395,27 @@
 
                     <!-- Start Exam Mode Buttons -->
                     <div class="pt-2">
+                        <!-- Auto-Saved Draft Resume Banner (Shown when student has unfinished exam for this year) -->
+                        <div id="draftResumeBanner" class="hidden mb-4 p-4 rounded-xl bg-amber-50 border-2 border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div class="flex items-start sm:items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 text-xl">
+                                    <i class="ph-fill ph-floppy-disk"></i>
+                                </div>
+                                <div>
+                                    <h3 class="font-prompt font-bold text-xs sm:text-sm text-amber-950">พบข้อมูลการทำข้อสอบที่บันทึกค้างไว้!</h3>
+                                    <p id="draftResumeInfoText" class="text-xs font-prompt text-amber-800 mt-0.5"></p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0 font-prompt text-xs">
+                                <button type="button" onclick="resumeExamFromDraft()" class="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-sm flex items-center gap-1.5 transition">
+                                    <i class="ph-bold ph-play"></i> ทำต่อจากเดิม
+                                </button>
+                                <button type="button" onclick="discardCurrentYearDraft()" class="px-3 py-2 rounded-lg bg-white hover:bg-rose-50 text-rose-700 border border-amber-300 font-semibold transition">
+                                    ล้างที่ค้างไว้
+                                </button>
+                            </div>
+                        </div>
+
                         <h2 class="font-prompt font-bold text-sm sm:text-base text-slate-800 mb-3">
                             เลือกรูปแบบการทำแบบทดสอบเพื่อเริ่มต้น
                         </h2>
@@ -549,10 +570,15 @@
                                 <span class="hidden sm:inline">ข้อถัดไป</span><span class="sm:hidden">ถัดไป</span> <i class="ph-bold ph-caret-right"></i>
                             </button>
                         </div>
-                        <button id="bookmarkBtn" type="button" onclick="toggleBookmarkCurrent()" class="w-full sm:w-auto justify-center px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-600 font-prompt text-xs font-medium flex items-center gap-1.5 transition">
-                            <i class="ph-fill ph-bookmark-simple text-amber-500"></i>
-                            <span id="bookmarkTextLabel">ทำเครื่องหมายทบทวน</span>
-                        </button>
+                        <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+                            <span id="autoSaveStatusPill" class="inline-flex items-center gap-1 text-[11px] font-prompt text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                                <i class="ph-fill ph-cloud-check"></i> บันทึกคำตอบอัตโนมัติ
+                            </span>
+                            <button id="bookmarkBtn" type="button" onclick="toggleBookmarkCurrent()" class="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-600 font-prompt text-xs font-medium flex items-center gap-1.5 transition">
+                                <i class="ph-fill ph-bookmark-simple text-amber-500"></i>
+                                <span id="bookmarkTextLabel">ทำเครื่องหมายทบทวน</span>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Dynamic Questions Container -->
@@ -695,8 +721,70 @@
                     </div>
                 </div>
 
+                <!-- ==========================================
+                     OVERALL COHORT / CLASS SUMMARY & SCORE DISTRIBUTION
+                     ========================================== -->
+                <div class="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                        <div>
+                            <h4 class="font-prompt font-bold text-xs sm:text-sm text-slate-900 flex items-center gap-1.5">
+                                <i class="ph-fill ph-users-three text-indigo-600 text-lg"></i>
+                                <span>สรุปภาพรวมผลคะแนนของนักเรียนทั้งหมด (<span id="cohortYearScopeLabel" class="text-indigo-700">ทุกปีการศึกษารวมกัน</span>)</span>
+                            </h4>
+                            <p class="text-[11px] font-prompt text-slate-500 mt-0.5">วิเคราะห์ค่าเฉลี่ยรวม และจำแนกจำนวนนักเรียนตามช่วงคะแนน เพื่อดูว่านักเรียนส่วนใหญ่อยู่ในช่วงคะแนนใด</p>
+                        </div>
+                        <span id="cohortMajorityBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 font-prompt font-bold text-xs self-start sm:self-auto">
+                            กำลังประมวลผล...
+                        </span>
+                    </div>
+
+                    <!-- Overall Class KPI Cards -->
+                    <div id="overallCohortKpiGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 font-prompt"></div>
+
+                    <!-- Score Range Distribution Bars & All-Student Summary Table -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch pt-1">
+                        <!-- Left: Score Range Breakdown (7 cols) -->
+                        <div class="lg:col-span-7 bg-slate-50/80 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 flex flex-col justify-between space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="font-prompt font-bold text-xs text-slate-800 flex items-center gap-1.5">
+                                    <i class="ph-fill ph-chart-bar-horizontal text-blue-700"></i>
+                                    จำนวนนักเรียนแยกตามช่วงคะแนน (คิดจากคะแนนหลังซ้อมล่าสุดของแต่ละคน)
+                                </span>
+                            </div>
+                            <div id="scoreRangeDistributionBox" class="space-y-2.5 font-prompt"></div>
+                        </div>
+
+                        <!-- Right: Quick Overview of All Students (5 cols) -->
+                        <div class="lg:col-span-5 bg-slate-50/80 rounded-xl border border-slate-200/80 overflow-hidden flex flex-col">
+                            <div class="px-3.5 py-2.5 bg-slate-100 border-b border-slate-200 font-prompt font-bold text-xs text-slate-700 flex items-center justify-between">
+                                <span>สรุปคะแนนรายบุคคล (คลิกชื่อเพื่อดูกราฟ)</span>
+                                <span class="text-[10px] text-slate-500 font-normal">ก่อน &rarr; หลังซ้อม</span>
+                            </div>
+                            <div class="max-h-52 overflow-y-auto flex-1">
+                                <table class="w-full text-xs font-prompt">
+                                    <thead class="bg-white text-slate-600 border-b border-slate-200 sticky top-0">
+                                        <tr>
+                                            <th class="py-2 px-3 text-left">ชื่อนักเรียน</th>
+                                            <th class="py-2 px-2 text-center">ก่อนซ้อม</th>
+                                            <th class="py-2 px-2 text-center">หลังซ้อม</th>
+                                            <th class="py-2 px-2 text-right">เฉลี่ย</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="overallStudentsQuickTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Selected Student Before vs After Summary Cards -->
-                <div id="modalStudentKpiGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 font-prompt"></div>
+                <div class="pt-2 border-t border-slate-200">
+                    <h4 class="font-prompt font-bold text-xs sm:text-sm text-slate-800 mb-2.5 flex items-center gap-1.5">
+                        <i class="ph-fill ph-user-focus text-blue-700 text-lg"></i>
+                        <span>ข้อมูลพัฒนาการรายบุคคลของนักเรียนที่เลือก</span>
+                    </h4>
+                    <div id="modalStudentKpiGrid" class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5 font-prompt"></div>
+                </div>
 
                 <!-- Symmetrical 2-Column Charts Grid -->
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 items-stretch">
@@ -8454,47 +8542,274 @@
         var isSubmitted = false;
         var timerInterval = null;
         var remainingSeconds = 60 * 60;
+        var pendingSwitchTargetYear = null;
 
         var userAnswers = {};
         var bookmarkedQuestions = new Set();
         var practiceRevealed = new Set();
 
-        function getQuestionsForYear(year) {
-            if (year === '2568' && Array.isArray(window.QUESTIONS_2568)) return window.QUESTIONS_2568;
-            if (year === '2567' && Array.isArray(window.QUESTIONS_2567)) return window.QUESTIONS_2567;
-            if (year === '2566' && Array.isArray(window.QUESTIONS_2566)) return window.QUESTIONS_2566;
-            if (year === '2565' && Array.isArray(window.QUESTIONS_2565)) return window.QUESTIONS_2565;
-            if (year === '2564' && Array.isArray(window.QUESTIONS_2564)) return window.QUESTIONS_2564;
-            if (year === '2563' && Array.isArray(window.QUESTIONS_2563)) return window.QUESTIONS_2563;
-            if (year === '2562' && Array.isArray(window.QUESTIONS_2562)) return window.QUESTIONS_2562;
-            if (year === '2561' && Array.isArray(window.QUESTIONS_2561)) return window.QUESTIONS_2561;
-            if (year === '2560' && Array.isArray(window.QUESTIONS_2560)) return window.QUESTIONS_2560;
-            if (year === '2559' && Array.isArray(window.QUESTIONS_2559)) return window.QUESTIONS_2559;
-            return window.QUESTIONS_2568 || window.QUESTIONS_2567 || window.QUESTIONS_2566 || window.QUESTIONS_2565 || window.QUESTIONS_2564 || window.QUESTIONS_2563 || window.QUESTIONS_2562 || window.QUESTIONS_2561 || window.QUESTIONS_2560 || window.QUESTIONS_2559 || [];
+        var DRAFT_STORAGE_PREFIX = 'ONET_SCI_P6_DRAFT_YEAR_';
+
+        function countAnsweredQuestions() {
+            var count = 0;
+            QUESTIONS.forEach(function(q) {
+                if (isQuestionAnswered(q) || isQuestionPartiallyAnswered(q)) count++;
+            });
+            return count;
         }
 
-        function initializeAnswersState() {
-            var meta = EXAM_METADATA[currentExamYear] || EXAM_METADATA['2568'] || EXAM_METADATA['2567'];
-            QUESTIONS = (meta && Array.isArray(meta.questions) && meta.questions.length > 0)
-                ? meta.questions
-                : getQuestionsForYear(currentExamYear);
+        function saveCurrentExamDraft() {
+            if (isSubmitted) return;
+            var examViewEl = document.getElementById('examView');
+            if (!examViewEl || examViewEl.classList.contains('hidden')) return;
 
-            userAnswers = {};
-            for (var i = 1; i <= QUESTIONS.length; i++) {
-                var q = QUESTIONS[i - 1];
-                if (q && q.type === 'complexYesNo') {
-                    userAnswers[i] = {};
-                } else {
-                    userAnswers[i] = [];
+            var answeredCount = countAnsweredQuestions();
+            if (answeredCount === 0 && currentQuestionIndex === 0) return;
+
+            var draftObj = {
+                examYear: currentExamYear,
+                examMode: examMode,
+                currentQuestionIndex: currentQuestionIndex,
+                remainingSeconds: remainingSeconds,
+                userAnswers: userAnswers,
+                bookmarks: Array.from(bookmarkedQuestions),
+                studentName: (document.getElementById('studentName') ? document.getElementById('studentName').value : ''),
+                studentSeatId: (document.getElementById('studentSeatId') ? document.getElementById('studentSeatId').value : ''),
+                studentPlace: (document.getElementById('studentPlace') ? document.getElementById('studentPlace').value : ''),
+                studentRoom: (document.getElementById('studentRoom') ? document.getElementById('studentRoom').value : ''),
+                savedAt: new Date().toISOString()
+            };
+            try {
+                localStorage.setItem(DRAFT_STORAGE_PREFIX + currentExamYear, JSON.stringify(draftObj));
+                var pill = document.getElementById('autoSaveStatusPill');
+                if (pill) {
+                    var now = new Date();
+                    var timeStr = (now.getHours() < 10 ? '0' : '') + now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
+                    pill.innerHTML = '<i class="ph-fill ph-cloud-check"></i> เซฟอัตโนมัติ (' + timeStr + ' น.)';
+                }
+            } catch (e) {}
+        }
+
+        function getExamDraft(year) {
+            try {
+                var raw = localStorage.getItem(DRAFT_STORAGE_PREFIX + year);
+                if (!raw) return null;
+                return JSON.parse(raw);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearExamDraft(year) {
+            try {
+                localStorage.removeItem(DRAFT_STORAGE_PREFIX + (year || currentExamYear));
+            } catch (e) {}
+            updateDraftBannerOnCover();
+        }
+
+        function discardCurrentYearDraft() {
+            clearExamDraft(currentExamYear);
+            initializeAnswersState();
+        }
+
+        function updateDraftBannerOnCover() {
+            var banner = document.getElementById('draftResumeBanner');
+            var infoText = document.getElementById('draftResumeInfoText');
+            if (!banner || !infoText) return;
+
+            var draft = getExamDraft(currentExamYear);
+            if (!draft || !draft.userAnswers) {
+                banner.classList.add('hidden');
+                return;
+            }
+
+            var qs = getQuestionsForYear(currentExamYear);
+            var ansCount = 0;
+            qs.forEach(function(q) {
+                var ans = draft.userAnswers[q.id];
+                if (q.type === 'complexYesNo') {
+                    if (ans && typeof ans === 'object' && Object.keys(ans).length > 0) ansCount++;
+                } else if (Array.isArray(ans) && ans.length > 0) {
+                    ansCount++;
+                }
+            });
+
+            if (ansCount === 0) {
+                banner.classList.add('hidden');
+                return;
+            }
+
+            var minsLeft = Math.floor((draft.remainingSeconds || 0) / 60);
+            infoText.textContent = 'ชุดข้อสอบปีการศึกษา ' + currentExamYear + ' • ตอบไว้แล้ว ' + ansCount + ' / ' + qs.length + ' ข้อ' +
+                (draft.examMode === 'timed' ? ' (เวลาที่เหลือประมาณ ' + minsLeft + ' นาที)' : ' (โหมดฝึกซ้อม)');
+            banner.classList.remove('hidden');
+        }
+
+        function resumeExamFromDraft() {
+            var draft = getExamDraft(currentExamYear);
+            if (!draft) {
+                startExam('timed');
+                return;
+            }
+
+            examMode = draft.examMode || 'timed';
+            isSubmitted = false;
+            initializeAnswersState();
+
+            if (draft.userAnswers) {
+                userAnswers = draft.userAnswers;
+            }
+            if (Array.isArray(draft.bookmarks)) {
+                bookmarkedQuestions = new Set(draft.bookmarks);
+            }
+            currentQuestionIndex = typeof draft.currentQuestionIndex === 'number' ? draft.currentQuestionIndex : 0;
+            var meta = EXAM_METADATA[currentExamYear];
+            remainingSeconds = typeof draft.remainingSeconds === 'number' ? draft.remainingSeconds : (meta.durationMinutes || 60) * 60;
+
+            if (draft.studentName && document.getElementById('studentName') && !document.getElementById('studentName').value) {
+                document.getElementById('studentName').value = draft.studentName;
+            }
+            if (draft.studentSeatId && document.getElementById('studentSeatId') && !document.getElementById('studentSeatId').value) {
+                document.getElementById('studentSeatId').value = draft.studentSeatId;
+            }
+            if (draft.studentPlace && document.getElementById('studentPlace') && !document.getElementById('studentPlace').value) {
+                document.getElementById('studentPlace').value = draft.studentPlace;
+            }
+            if (draft.studentRoom && document.getElementById('studentRoom') && !document.getElementById('studentRoom').value) {
+                document.getElementById('studentRoom').value = draft.studentRoom;
+            }
+
+            var nameVal = (document.getElementById('studentName').value || '').trim();
+            var seatVal = (document.getElementById('studentSeatId').value || '').trim();
+            var roomVal = (document.getElementById('studentRoom').value || '').trim();
+
+            document.getElementById('omrStudentNameDisplay').textContent = nameVal || 'ผู้เข้าสอบ (ไม่ระบุชื่อ)';
+            var seatRoomParts = [];
+            if (seatVal) seatRoomParts.push('เลขที่นั่ง ' + seatVal);
+            if (roomVal) seatRoomParts.push('ห้อง ' + roomVal);
+            document.getElementById('omrStudentSeatDisplay').textContent = seatRoomParts.join(' • ');
+
+            document.getElementById('coverView').classList.add('hidden');
+            document.getElementById('examView').classList.remove('hidden');
+            document.getElementById('examTopControls').classList.remove('hidden');
+            document.getElementById('examTopControls').classList.add('flex');
+            document.getElementById('resultSummaryBanner').classList.add('hidden');
+
+            updateSubmitButtonsState(false);
+            setExamViewMode('single');
+
+            if (timerInterval) clearInterval(timerInterval);
+            if (examMode === 'timed') {
+                updateTimerDisplay();
+                timerInterval = setInterval(function() {
+                    if (remainingSeconds > 0) {
+                        remainingSeconds--;
+                        updateTimerDisplay();
+                        if (remainingSeconds % 10 === 0) saveCurrentExamDraft();
+                    } else {
+                        clearInterval(timerInterval);
+                        gradeExam();
+                    }
+                }, 1000);
+            } else {
+                var tDisp = document.getElementById('timerDisplay');
+                if (tDisp) {
+                    tDisp.textContent = 'โหมดฝึกซ้อม';
+                    tDisp.className = 'font-prompt font-semibold text-xs sm:text-sm text-emerald-700';
                 }
             }
-            bookmarkedQuestions.clear();
-            practiceRevealed.clear();
-        }
-        initializeAnswersState();
 
-        // Switch between Academic Years 2568 down to 2559
+            renderAll();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function getQuestionsForYear(year) {
+            if (year === '2568') return window.QUESTIONS_2568 || [];
+            if (year === '2567') return window.QUESTIONS_2567 || [];
+            if (year === '2566') return window.QUESTIONS_2566 || [];
+            if (year === '2565') return window.QUESTIONS_2565 || [];
+            if (year === '2564') return window.QUESTIONS_2564 || [];
+            if (year === '2563') return window.QUESTIONS_2563 || [];
+            if (year === '2562') return window.QUESTIONS_2562 || [];
+            if (year === '2561') return window.QUESTIONS_2561 || [];
+            if (year === '2560') return window.QUESTIONS_2560 || [];
+            return window.QUESTIONS_2559 || [];
+        }
+
+        // Switch between Academic Years 2568 down to 2559 (with accidental click protection)
         function switchExamYear(year) {
+            if (!EXAM_METADATA[year]) return;
+            if (year === currentExamYear) {
+                var examViewEl = document.getElementById('examView');
+                if (examViewEl && !examViewEl.classList.contains('hidden')) {
+                    return;
+                }
+            }
+
+            // Protection: If student is currently inside the exam view, warn before switching years!
+            var examViewEl = document.getElementById('examView');
+            var isInsideExam = examViewEl && !examViewEl.classList.contains('hidden');
+            if (isInsideExam && year !== currentExamYear) {
+                saveCurrentExamDraft();
+                openSwitchYearModal(year);
+                return;
+            }
+
+            executeSwitchExamYear(year);
+        }
+
+        function openSwitchYearModal(targetYear) {
+            pendingSwitchTargetYear = targetYear;
+            var ansCount = countAnsweredQuestions();
+            var totalQ = QUESTIONS.length;
+            var msgEl = document.getElementById('switchYearModalMessage');
+            var subNoteEl = document.getElementById('switchYearSaveNote');
+            var confirmBtnLabel = document.getElementById('confirmSwitchYearBtnLabel');
+
+            if (msgEl) {
+                if (!isSubmitted) {
+                    msgEl.innerHTML = 'คุณกำลังทำข้อสอบ <strong>ปีการศึกษา ' + currentExamYear + '</strong> อยู่ (ทำไปแล้ว <strong>' + ansCount + ' / ' + totalQ + ' ข้อ</strong>) หากกดสลับไป <strong>ปีการศึกษา ' + targetYear + '</strong> ตอนนี้ คุณจะออกจากข้อสอบชุดปัจจุบัน';
+                } else {
+                    msgEl.innerHTML = 'คุณกำลังดูผลคะแนนและเฉลยของ <strong>ปีการศึกษา ' + currentExamYear + '</strong> คุณต้องการสลับไปยังหน้าปกข้อสอบ <strong>ปีการศึกษา ' + targetYear + '</strong> ใช่หรือไม่?';
+                }
+            }
+            if (subNoteEl) {
+                if (!isSubmitted && ansCount > 0) {
+                    subNoteEl.classList.remove('hidden');
+                    subNoteEl.innerHTML = '<i class="ph-fill ph-floppy-disk text-emerald-600 text-base shrink-0"></i> <span><strong>ระบบเซฟคำตอบให้แล้ว:</strong> คำตอบทั้ง ' + ansCount + ' ข้อของปี ' + currentExamYear + ' ถูกบันทึกไว้ชั่วคราวแล้ว สามารถกลับมาทำต่อภายหลังได้</span>';
+                } else {
+                    subNoteEl.classList.add('hidden');
+                }
+            }
+            if (confirmBtnLabel) {
+                confirmBtnLabel.textContent = 'ยืนยันสลับไปปี ' + targetYear;
+            }
+
+            var modal = document.getElementById('switchYearModal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+        }
+
+        function closeSwitchYearModal() {
+            pendingSwitchTargetYear = null;
+            var modal = document.getElementById('switchYearModal');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        function confirmSwitchYearAction() {
+            var target = pendingSwitchTargetYear;
+            closeSwitchYearModal();
+            if (target) {
+                executeSwitchExamYear(target);
+            }
+        }
+
+        function executeSwitchExamYear(year) {
             if (!EXAM_METADATA[year]) return;
             currentExamYear = year;
             var meta = EXAM_METADATA[year];
@@ -8505,8 +8820,8 @@
                 var topBtn = document.getElementById('btnSelectYear' + y);
                 if (topBtn) {
                     topBtn.className = (year === y)
-                        ? 'px-2.5 py-1 rounded-lg bg-blue-700 text-white font-semibold shadow-sm transition'
-                        : 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 transition';
+                        ? 'px-2.5 py-1 rounded-lg bg-blue-700 text-white font-semibold shadow-sm transition shrink-0'
+                        : 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 transition shrink-0';
                 }
                 var coverBtn = document.getElementById('coverBtnYear' + y);
                 if (coverBtn) {
@@ -8573,8 +8888,30 @@
             document.getElementById('omrPart2Subtitle').textContent = meta.omrPart2Subtitle;
 
             confirmResetExam();
+            updateDraftBannerOnCover();
         }
         window.switchExamYear = switchExamYear;
+        window.openSwitchYearModal = openSwitchYearModal;
+        window.closeSwitchYearModal = closeSwitchYearModal;
+        window.confirmSwitchYearAction = confirmSwitchYearAction;
+        window.resumeExamFromDraft = resumeExamFromDraft;
+        window.discardCurrentYearDraft = discardCurrentYearDraft;
+
+        function initializeAnswersState() {
+            userAnswers = {};
+            bookmarkedQuestions = new Set();
+            practiceRevealed = new Set();
+            QUESTIONS = getQuestionsForYear(currentExamYear);
+            for (var i = 0; i < QUESTIONS.length; i++) {
+                var q = QUESTIONS[i];
+                if (q.type === 'complexYesNo') {
+                    userAnswers[q.id] = {};
+                } else {
+                    userAnswers[q.id] = [];
+                }
+            }
+        }
+        initializeAnswersState();
 
         function isQuestionAnswered(q) {
             var ans = userAnswers[q.id];
@@ -8667,6 +9004,7 @@
                     if (remainingSeconds > 0) {
                         remainingSeconds--;
                         updateTimerDisplay();
+                        if (remainingSeconds % 10 === 0) saveCurrentExamDraft();
                     } else {
                         clearInterval(timerInterval);
                         gradeExam();
@@ -8754,6 +9092,7 @@
             } else {
                 bookmarkedQuestions.add(qId);
             }
+            saveCurrentExamDraft();
             renderAll();
         }
 
@@ -8789,6 +9128,7 @@
                 current.sort(function(a, b) { return a - b; });
                 userAnswers[qId] = current;
             }
+            saveCurrentExamDraft();
             renderAll();
         }
 
@@ -8798,6 +9138,7 @@
                 userAnswers[qId] = {};
             }
             userAnswers[qId][subId] = val;
+            saveCurrentExamDraft();
             renderAll();
         }
 
@@ -9287,6 +9628,7 @@
         function gradeExam() {
             if (isSubmitted) return;
             isSubmitted = true;
+            clearExamDraft(currentExamYear);
             updateSubmitButtonsState(true);
             closeSubmitModal();
             if (timerInterval) clearInterval(timerInterval);
@@ -9371,6 +9713,17 @@
         }
 
         function openResetModal() {
+            saveCurrentExamDraft();
+            var ansCount = countAnsweredQuestions();
+            var resetNoteEl = document.getElementById('resetModalSaveNote');
+            if (resetNoteEl) {
+                if (!isSubmitted && ansCount > 0) {
+                    resetNoteEl.classList.remove('hidden');
+                    resetNoteEl.textContent = 'ระบบได้บันทึกคำตอบที่คุณทำไว้ (' + ansCount + ' ข้อ) ให้อัตโนมัติแล้ว คุณสามารถกด "ทำต่อจากเดิม" ที่หน้าปกได้ตลอดเวลา';
+                } else {
+                    resetNoteEl.classList.add('hidden');
+                }
+            }
             var modal = document.getElementById('resetModal');
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -9384,6 +9737,9 @@
 
         function confirmResetExam() {
             closeResetModal();
+            if (!isSubmitted) {
+                saveCurrentExamDraft();
+            }
             if (timerInterval) clearInterval(timerInterval);
             isSubmitted = false;
             updateSubmitButtonsState(false);
@@ -9399,8 +9755,14 @@
                 topControlsEl.classList.remove('flex');
             }
             if (coverViewEl) coverViewEl.classList.remove('hidden');
+            updateDraftBannerOnCover();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
+
+        // Initial check for saved draft on page load
+        setTimeout(function() {
+            updateDraftBannerOnCover();
+        }, 100);
 
         window.startExam = startExam;
         window.setExamViewMode = setExamViewMode;
@@ -9963,6 +10325,11 @@
             var allList = getStudentHistory().filter(function(r) {
                 return EXAM_YEARS.indexOf(String(r.examYear)) !== -1;
             });
+
+            // 1. Render Overall Cohort / Class Summary & Score Distribution Range
+            renderOverallClassSummary(allList, yearFilter, studentName);
+
+            // 2. Render Individual Student Progression
             var studentAllRecords = allList.filter(function(r) {
                 return (r.studentName || '').trim() === studentName;
             });
@@ -9978,6 +10345,175 @@
             renderAttemptProgressionChart(filteredRecords, 'attemptChartContainer');
             renderMultiYearComparisonChart(studentAllRecords);
             renderStudentAttemptsTable(filteredRecords);
+        }
+
+        function selectStudentFromOverview(name) {
+            var select = document.getElementById('statsStudentSelect');
+            if (!select) return;
+            select.value = name;
+            renderSelectedStudentCharts();
+        }
+        window.selectStudentFromOverview = selectStudentFromOverview;
+
+        function renderOverallClassSummary(allList, yearFilter, activeStudentName) {
+            var scopeLabel = document.getElementById('cohortYearScopeLabel');
+            var majorityBadge = document.getElementById('cohortMajorityBadge');
+            var kpiGrid = document.getElementById('overallCohortKpiGrid');
+            var distBox = document.getElementById('scoreRangeDistributionBox');
+            var quickTbody = document.getElementById('overallStudentsQuickTableBody');
+
+            if (scopeLabel) {
+                scopeLabel.textContent = yearFilter === 'ALL' ? 'ทุกปีการศึกษารวมกัน' : ('เฉพาะชุดข้อสอบปีการศึกษา ' + yearFilter);
+            }
+
+            var scopedRecords = yearFilter === 'ALL'
+                ? allList
+                : allList.filter(function(r) { return String(r.examYear) === String(yearFilter); });
+
+            if (!scopedRecords || scopedRecords.length === 0) {
+                if (majorityBadge) majorityBadge.textContent = 'ยังไม่มีข้อมูลการสอบ';
+                if (kpiGrid) {
+                    kpiGrid.innerHTML = '<div class="col-span-2 lg:col-span-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-center text-xs text-slate-400">ยังไม่มีข้อมูลคะแนนในชุดข้อสอบที่เลือก (กดปุ่ม "แสดงข้อมูลตัวอย่าง" ด้านบนเพื่อดูตัวอย่างการวิเคราะห์ภาพรวมได้)</div>';
+                }
+                if (distBox) {
+                    distBox.innerHTML = '<div class="text-center text-xs text-slate-400 py-6">ไม่มีข้อมูลสำหรับคำนวณช่วงคะแนน</div>';
+                }
+                if (quickTbody) {
+                    quickTbody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-slate-400">ยังไม่มีรายชื่อนักเรียน</td></tr>';
+                }
+                return;
+            }
+
+            // Group records by studentName
+            var studentMap = {};
+            scopedRecords.forEach(function(r) {
+                var name = (r.studentName || 'ผู้เข้าสอบทั่วไป').trim();
+                if (!studentMap[name]) studentMap[name] = [];
+                studentMap[name].push(r);
+            });
+
+            var studentNames = Object.keys(studentMap);
+            var totalStudents = studentNames.length;
+            var totalAttempts = scopedRecords.length;
+
+            var sumFirst = 0;
+            var sumLatest = 0;
+            var sumAllAvg = 0;
+            var highestScore = 0;
+
+            var studentSummaries = studentNames.map(function(name) {
+                var recs = studentMap[name];
+                var firstSc = Number(recs[0].totalScore || 0);
+                var latestSc = Number(recs[recs.length - 1].totalScore || 0);
+                var sumSc = 0;
+                recs.forEach(function(item) {
+                    var s = Number(item.totalScore || 0);
+                    sumSc += s;
+                    if (s > highestScore) highestScore = s;
+                });
+                var avgSc = +(sumSc / recs.length).toFixed(1);
+
+                sumFirst += firstSc;
+                sumLatest += latestSc;
+                sumAllAvg += avgSc;
+
+                return {
+                    name: name,
+                    attempts: recs.length,
+                    firstScore: firstSc,
+                    latestScore: latestSc,
+                    avgScore: avgSc
+                };
+            });
+
+            var classAvgFirst = +(sumFirst / totalStudents).toFixed(1);
+            var classAvgLatest = +(sumLatest / totalStudents).toFixed(1);
+            var classAvgOverall = +(sumAllAvg / totalStudents).toFixed(1);
+            var avgDiff = +(classAvgLatest - classAvgFirst).toFixed(1);
+            var avgDiffSign = avgDiff > 0 ? '+' : '';
+
+            // Categorize students into 4 score brackets based on their latest score
+            var brackets = [
+                { id: 'b1', label: '80 - 100 คะแนน (ดีเยี่ยม)', shortLabel: '80 - 100 คะแนน', min: 80, max: 100, count: 0, barColor: 'bg-emerald-500', badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+                { id: 'b2', label: '65 - 79 คะแนน (ดีมาก)', shortLabel: '65 - 79 คะแนน', min: 65, max: 79.99, count: 0, barColor: 'bg-blue-600', badgeColor: 'bg-blue-100 text-blue-800 border-blue-200' },
+                { id: 'b3', label: '50 - 64 คะแนน (ผ่านเกณฑ์)', shortLabel: '50 - 64 คะแนน', min: 50, max: 64.99, count: 0, barColor: 'bg-amber-500', badgeColor: 'bg-amber-100 text-amber-800 border-amber-200' },
+                { id: 'b4', label: 'ต่ำกว่า 50 คะแนน (ควรเสริมพื้นฐาน)', shortLabel: 'ต่ำกว่า 50 คะแนน', min: 0, max: 49.99, count: 0, barColor: 'bg-rose-500', badgeColor: 'bg-rose-100 text-rose-800 border-rose-200' }
+            ];
+
+            studentSummaries.forEach(function(st) {
+                var s = st.latestScore;
+                if (s >= 80) brackets[0].count++;
+                else if (s >= 65) brackets[1].count++;
+                else if (s >= 50) brackets[2].count++;
+                else brackets[3].count++;
+            });
+
+            // Find bracket with maximum students
+            var dominantBracket = brackets[0];
+            brackets.forEach(function(b) {
+                if (b.count > dominantBracket.count) dominantBracket = b;
+            });
+
+            if (majorityBadge) {
+                majorityBadge.innerHTML = '<i class="ph-fill ph-Chart-pie-slice"></i> ส่วนใหญ่อยู่ในช่วง ' + dominantBracket.shortLabel + ' (' + dominantBracket.count + ' คน)';
+            }
+
+            if (kpiGrid) {
+                kpiGrid.innerHTML =
+                    '<div class="p-3 rounded-xl bg-slate-50 border border-slate-200">' +
+                        '<span class="text-[11px] text-slate-500 block">จำนวนนักเรียนทั้งหมด</span>' +
+                        '<span class="text-lg sm:text-xl font-bold text-slate-900">' + totalStudents + ' คน</span>' +
+                        '<span class="text-[11px] text-slate-500"> (ซ้อมรวม ' + totalAttempts + ' ครั้ง)</span>' +
+                    '</div>' +
+                    '<div class="p-3 rounded-xl bg-blue-50/70 border border-blue-200">' +
+                        '<span class="text-[11px] text-blue-800 block">ค่าเฉลี่ยรวมหลังซ้อม (ก่อนซ้อม)</span>' +
+                        '<span class="text-lg sm:text-xl font-bold text-blue-800">' + classAvgLatest + '</span>' +
+                        '<span class="text-[11px] text-slate-600"> (ก่อนซ้อม ' + classAvgFirst + ' | ' + avgDiffSign + avgDiff + ')</span>' +
+                    '</div>' +
+                    '<div class="p-3 rounded-xl bg-indigo-50/70 border border-indigo-200">' +
+                        '<span class="text-[11px] text-indigo-800 block">ค่าเฉลี่ยทุกครั้ง / คะแนนสูงสุด</span>' +
+                        '<span class="text-lg sm:text-xl font-bold text-indigo-900">' + classAvgOverall + '</span>' +
+                        '<span class="text-[11px] text-indigo-700 font-semibold"> (สูงสุด ' + highestScore + ')</span>' +
+                    '</div>' +
+                    '<div class="p-3 rounded-xl border ' + dominantBracket.badgeColor + '">' +
+                        '<span class="text-[11px] opacity-80 block">ช่วงคะแนนที่มีเด็กมากที่สุด</span>' +
+                        '<span class="text-sm sm:text-base font-bold block truncate">' + dominantBracket.shortLabel + '</span>' +
+                        '<span class="text-[11px] font-semibold">จำนวน ' + dominantBracket.count + ' คน (' + Math.round((dominantBracket.count / totalStudents) * 100) + '%)</span>' +
+                    '</div>';
+            }
+
+            if (distBox) {
+                distBox.innerHTML = brackets.map(function(b) {
+                    var pct = totalStudents > 0 ? Math.round((b.count / totalStudents) * 100) : 0;
+                    return (
+                        '<div class="space-y-1">' +
+                            '<div class="flex items-center justify-between text-xs">' +
+                                '<span class="font-semibold text-slate-700">' + b.label + '</span>' +
+                                '<span class="font-bold text-slate-900">' + b.count + ' คน <span class="text-slate-500 font-normal">(' + pct + '%)</span></span>' +
+                            '</div>' +
+                            '<div class="w-full h-3 rounded-full bg-slate-200 overflow-hidden">' +
+                                '<div class="h-full rounded-full transition-all duration-300 ' + b.barColor + '" style="width: ' + Math.max(pct, b.count > 0 ? 6 : 0) + '%"></div>' +
+                            '</div>' +
+                        '</div>'
+                    );
+                }).join('');
+            }
+
+            if (quickTbody) {
+                quickTbody.innerHTML = studentSummaries.map(function(st, sIdx) {
+                    var isCurrentSel = st.name === activeStudentName;
+                    var diff = +(st.latestScore - st.firstScore).toFixed(1);
+                    var diffBadge = diff > 0 ? '<span class="text-[10px] text-emerald-700 font-bold ml-0.5">(+' + diff + ')</span>' : '';
+                    return (
+                        '<tr onclick="selectStudentFromOverview(this.getAttribute(\'data-name\'))" data-name="' + st.name.replace(/"/g, '&quot;') + '" class="border-b border-slate-200/70 cursor-pointer transition ' + (isCurrentSel ? 'bg-blue-100/80 font-bold' : 'hover:bg-white') + '">' +
+                            '<td class="py-2 px-3 text-slate-800 truncate max-w-[130px]">' + (sIdx + 1) + '. ' + st.name + '</td>' +
+                            '<td class="py-2 px-2 text-center text-slate-600">' + st.firstScore + '</td>' +
+                            '<td class="py-2 px-2 text-center font-bold text-blue-800">' + st.latestScore + diffBadge + '</td>' +
+                            '<td class="py-2 px-2 text-right font-semibold text-slate-700">' + st.avgScore + '</td>' +
+                        '</tr>'
+                    );
+                }).join('');
+            }
         }
 
         function renderStudentAttemptsTable(records) {
@@ -10251,9 +10787,35 @@
                     <p class="text-xs font-prompt text-slate-500">ต้องการออกจากหน้าทำข้อสอบใช่หรือไม่?</p>
                 </div>
             </div>
+            <p id="resetModalSaveNote" class="hidden p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-prompt text-emerald-900 leading-relaxed"></p>
             <div class="flex items-center justify-end gap-2 pt-2 font-prompt text-xs">
-                <button type="button" onclick="closeResetModal()" class="px-3.5 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 font-semibold">ยกเลิก</button>
+                <button type="button" onclick="closeResetModal()" class="px-3.5 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-600 font-semibold">ทำข้อสอบต่อ</button>
                 <button type="button" onclick="confirmResetExam()" class="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-semibold">กลับหน้าปก</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Accidental Year-Switch Protection Modal -->
+    <div id="switchYearModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-2xl shrink-0">
+                    <i class="ph-fill ph-warning-circle"></i>
+                </div>
+                <div>
+                    <h3 class="font-prompt font-bold text-base text-slate-900">ยืนยันการเปลี่ยนชุดปีการศึกษา</h3>
+                    <p class="text-xs font-prompt text-slate-500">ระบบป้องกันการเผลอกดออกจากข้อสอบที่กำลังทำอยู่</p>
+                </div>
+            </div>
+            <p id="switchYearModalMessage" class="text-xs sm:text-sm text-slate-700 font-prompt leading-relaxed"></p>
+            <div id="switchYearSaveNote" class="hidden p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-prompt text-emerald-900 flex items-start gap-2 leading-relaxed"></div>
+            <div class="flex items-center justify-end gap-2 pt-2 font-prompt text-xs sm:text-sm">
+                <button type="button" onclick="closeSwitchYearModal()" class="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-semibold shadow-sm transition">
+                    ทำข้อสอบปีเดิมต่อ
+                </button>
+                <button type="button" onclick="confirmSwitchYearAction()" class="px-4 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-semibold transition">
+                    <span id="confirmSwitchYearBtnLabel">ยืนยันสลับปี</span>
+                </button>
             </div>
         </div>
     </div>
