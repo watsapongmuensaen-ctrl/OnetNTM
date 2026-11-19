@@ -332,7 +332,7 @@
                     </div>
 
                     <h1 class="text-xl sm:text-3xl font-bold font-prompt text-slate-900">
-                        รหัสวิชา 65 วิทยาศาสตร์ &nbsp;|&nbsp; รหัสชุดข้อสอบ 100
+                        รหัสวิชา 65 วิทยาศาสตร์ &nbsp;|&nbsp; รหัสชุดข้อสอบ <span id="coverTitleSetCode" class="text-blue-800 underline decoration-2">100</span>
                     </h1>
                     <p id="coverBannerSubtitle" class="text-xs sm:text-sm text-slate-600 mt-1.5 font-prompt">
                         แบบทดสอบทางการศึกษาระดับชาติขั้นพื้นฐาน (O-NET) ชั้นประถมศึกษาปีที่ 6 ปีการศึกษา 2568
@@ -613,6 +613,12 @@
                         <button type="button" onclick="toggleMobileOMR(false)" class="lg:hidden p-1.5 rounded-lg bg-orange-200/80 text-orange-950">
                             <i class="ph-bold ph-x text-base"></i>
                         </button>
+                    </div>
+
+                    <!-- OMR Exam Set Code Indicator (100 / 200 / 300 / 400) -->
+                    <div class="px-3.5 py-2 bg-orange-50 border-b border-orange-200 flex items-center justify-between gap-2">
+                        <span class="font-prompt font-bold text-[11px] text-orange-950">รหัสชุดข้อสอบ:</span>
+                        <div id="omrSetCodeBubbles" class="flex items-center gap-2 font-prompt text-[11px]"></div>
                     </div>
 
                     <!-- Scrollable Bubbles Area -->
@@ -8533,8 +8539,25 @@
             }
         };
 
+        var MASTER_QUESTIONS_BY_YEAR = {
+            '2568': (window.QUESTIONS_2568 || []).slice(),
+            '2567': (window.QUESTIONS_2567 || []).slice(),
+            '2566': (window.QUESTIONS_2566 || []).slice(),
+            '2565': (window.QUESTIONS_2565 || []).slice(),
+            '2564': (window.QUESTIONS_2564 || []).slice(),
+            '2563': (window.QUESTIONS_2563 || []).slice(),
+            '2562': (window.QUESTIONS_2562 || []).slice(),
+            '2561': (window.QUESTIONS_2561 || []).slice(),
+            '2560': (window.QUESTIONS_2560 || []).slice(),
+            '2559': (window.QUESTIONS_2559 || []).slice()
+        };
+
+        var EXAM_SET_CODES = ['100', '200', '300', '400'];
+        var SET_BAG_STORAGE_KEY = 'ONET_SCI_P6_SET_BAG_V2';
         var currentExamYear = '2568';
-        var QUESTIONS = window.QUESTIONS_2568 || window.QUESTIONS_2567 || window.QUESTIONS_2566 || window.QUESTIONS_2565 || window.QUESTIONS_2564 || window.QUESTIONS_2563 || window.QUESTIONS_2562 || window.QUESTIONS_2561 || window.QUESTIONS_2560 || window.QUESTIONS_2559 || [];
+        var currentSetCode = '100';
+        var lastFirstOrigIdByYear = {};
+        var QUESTIONS = [];
 
         var examMode = 'timed'; // 'timed' | 'practice'
         var viewMode = 'single'; // 'single' | 'all'
@@ -8550,49 +8573,320 @@
 
         var DRAFT_STORAGE_PREFIX = 'ONET_SCI_P6_DRAFT_YEAR_';
 
+        // Cryptographically strong random float [0, 1) so multiple users opening at the same time get independent results
+        function getSecureRandom() {
+            if (window.crypto && window.crypto.getRandomValues) {
+                var buf = new Uint32Array(1);
+                window.crypto.getRandomValues(buf);
+                return buf[0] / 4294967296;
+            }
+            return Math.random();
+        }
+
+        // True Fisher-Yates shuffle
+        function fisherYatesShuffle(arr) {
+            var result = arr.slice();
+            for (var i = result.length - 1; i > 0; i--) {
+                var j = Math.floor(getSecureRandom() * (i + 1));
+                var temp = result[i];
+                result[i] = result[j];
+                result[j] = temp;
+            }
+            return result;
+        }
+
+        // Fair non-repeating shuffle-bag per year: every year (2559 - 2568) has equal chance for 100, 200, 300, 400 and never repeats back-to-back
+        function drawNextRandomSetForYear(year) {
+            var store = { byYear: {}, lastGlobalCode: '' };
+            try {
+                var raw = localStorage.getItem(SET_BAG_STORAGE_KEY);
+                if (raw) {
+                    var parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object') {
+                        store.byYear = parsed.byYear || {};
+                        store.lastGlobalCode = parsed.lastGlobalCode || '';
+                    }
+                }
+            } catch (e) {}
+
+            var yKey = String(year);
+            if (!store.byYear[yKey] || !Array.isArray(store.byYear[yKey].bag)) {
+                store.byYear[yKey] = { bag: [], lastCode: '' };
+            }
+            var yState = store.byYear[yKey];
+            var avoidYearLast = yState.lastCode || '';
+            var avoidCurrent = currentSetCode || store.lastGlobalCode || '';
+
+            // Refill shuffled bag of all 4 sets when empty
+            if (yState.bag.length === 0) {
+                var freshBag = fisherYatesShuffle(EXAM_SET_CODES);
+                if (freshBag[0] === avoidYearLast || freshBag[0] === avoidCurrent) {
+                    var swapIdx = -1;
+                    for (var s = 1; s < freshBag.length; s++) {
+                        if (freshBag[s] !== avoidYearLast && freshBag[s] !== avoidCurrent) {
+                            swapIdx = s;
+                            break;
+                        }
+                    }
+                    if (swapIdx === -1) {
+                        for (var s2 = 1; s2 < freshBag.length; s2++) {
+                            if (freshBag[s2] !== avoidYearLast) {
+                                swapIdx = s2;
+                                break;
+                            }
+                        }
+                    }
+                    if (swapIdx !== -1) {
+                        var tmp = freshBag[0];
+                        freshBag[0] = freshBag[swapIdx];
+                        freshBag[swapIdx] = tmp;
+                    }
+                }
+                yState.bag = freshBag;
+            }
+
+            // Ensure the next drawn item never repeats the immediately previous set code
+            if (yState.bag[0] === avoidYearLast || yState.bag[0] === avoidCurrent) {
+                var altIdx = -1;
+                for (var a = 1; a < yState.bag.length; a++) {
+                    if (yState.bag[a] !== avoidYearLast && yState.bag[a] !== avoidCurrent) {
+                        altIdx = a;
+                        break;
+                    }
+                }
+                if (altIdx !== -1) {
+                    var t = yState.bag[0];
+                    yState.bag[0] = yState.bag[altIdx];
+                    yState.bag[altIdx] = t;
+                } else if (yState.bag.length === 1) {
+                    var remainingOne = yState.bag[0];
+                    var otherThree = fisherYatesShuffle(EXAM_SET_CODES.filter(function(c) { return c !== remainingOne; }));
+                    yState.bag = otherThree.concat([remainingOne]);
+                }
+            }
+
+            var picked = yState.bag.shift();
+            yState.lastCode = picked;
+            store.lastGlobalCode = picked;
+
+            try {
+                localStorage.setItem(SET_BAG_STORAGE_KEY, JSON.stringify(store));
+            } catch (e) {}
+
+            return picked;
+        }
+
+        currentSetCode = drawNextRandomSetForYear(currentExamYear);
+
+        function cloneQuestionWithNewId(origQ, newId) {
+            var cloned = Object.assign({}, origQ);
+            cloned.id = newId;
+            cloned.origId = origQ.id;
+            if (Array.isArray(origQ.choices)) {
+                cloned.choices = origQ.choices.slice();
+            }
+            if (Array.isArray(origQ.choiceSvgs)) {
+                cloned.choiceSvgs = origQ.choiceSvgs.slice();
+            }
+            if (Array.isArray(origQ.correct)) {
+                cloned.correct = origQ.correct.slice();
+            }
+            if (Array.isArray(origQ.subQuestions)) {
+                cloned.subQuestions = origQ.subQuestions.map(function(sq, idx) {
+                    var newSubId = newId + '.' + (idx + 1);
+                    var updatedText = String(sq.text || '').replace(/^\d+\.\d+\s*/, newSubId + ' ');
+                    return {
+                        subId: newSubId,
+                        origSubId: sq.subId,
+                        text: updatedText,
+                        correct: sq.correct
+                    };
+                });
+            }
+            return cloned;
+        }
+
+        function getQuestionsForYear(year, fixedOrigOrder) {
+            var masterList = MASTER_QUESTIONS_BY_YEAR[year] || MASTER_QUESTIONS_BY_YEAR['2568'] || [];
+            if (Array.isArray(fixedOrigOrder) && fixedOrigOrder.length === masterList.length) {
+                var byOrigId = {};
+                masterList.forEach(function(q) { byOrigId[q.id] = q; });
+                var ordered = [];
+                fixedOrigOrder.forEach(function(origId) {
+                    if (byOrigId[origId]) ordered.push(byOrigId[origId]);
+                });
+                if (ordered.length === masterList.length) {
+                    return ordered.map(function(origQ, idx) {
+                        return cloneQuestionWithNewId(origQ, idx + 1);
+                    });
+                }
+            }
+
+            var part1Master = masterList.filter(function(q) { return q.part === 1; }).slice();
+            var part2Master = masterList.filter(function(q) { return q.part === 2; }).slice();
+
+            // Fresh true-random Fisher-Yates shuffle for Part 1 every time a set is generated
+            var shuffledP1 = fisherYatesShuffle(part1Master);
+            var prevFirstOrig = lastFirstOrigIdByYear[year];
+            if (shuffledP1.length > 1 && prevFirstOrig && shuffledP1[0].id === prevFirstOrig) {
+                var swapPos = 1 + Math.floor(getSecureRandom() * (shuffledP1.length - 1));
+                var tempQ = shuffledP1[0];
+                shuffledP1[0] = shuffledP1[swapPos];
+                shuffledP1[swapPos] = tempQ;
+            }
+            if (shuffledP1.length > 0) {
+                lastFirstOrigIdByYear[year] = shuffledP1[0].id;
+            }
+
+            // Fresh true-random Fisher-Yates shuffle for Part 2
+            var shuffledP2 = fisherYatesShuffle(part2Master);
+
+            var combined = shuffledP1.concat(shuffledP2);
+            return combined.map(function(origQ, idx) {
+                return cloneQuestionWithNewId(origQ, idx + 1);
+            });
+        }
+
+        function updateSetCodeUI() {
+            var topBadge = document.getElementById('topYearBadge');
+            if (topBadge) {
+                topBadge.textContent = 'ปีการศึกษา ' + currentExamYear + ' • ชุด ' + currentSetCode;
+            }
+            var coverSetEl = document.getElementById('coverTitleSetCode');
+            if (coverSetEl) {
+                coverSetEl.textContent = currentSetCode;
+            }
+            var omrSetBox = document.getElementById('omrSetCodeBubbles');
+            if (omrSetBox) {
+                omrSetBox.innerHTML = EXAM_SET_CODES.map(function(code) {
+                    var filled = code === currentSetCode ? 'filled' : '';
+                    return (
+                        '<span class="inline-flex items-center gap-1">' +
+                            '<span class="omr-bubble disabled ' + filled + '" style="width:18px;height:18px;font-size:9px;cursor:default;">' + (code === currentSetCode ? '●' : '') + '</span>' +
+                            '<span class="' + (code === currentSetCode ? 'font-bold text-orange-950' : 'text-orange-700/70') + '">' + code + '</span>' +
+                        '</span>'
+                    );
+                }).join('');
+            }
+        }
+
+        function updateYearButtonsHighlight(year) {
+            var allYears = ['2568', '2567', '2566', '2565', '2564', '2563', '2562', '2561', '2560', '2559'];
+            allYears.forEach(function(y) {
+                var topBtn = document.getElementById('btnSelectYear' + y);
+                if (topBtn) {
+                    if (y === year) {
+                        topBtn.className = 'px-2.5 py-1 rounded-lg bg-blue-700 text-white font-semibold shadow-sm transition shrink-0';
+                    } else {
+                        topBtn.className = 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 transition shrink-0';
+                    }
+                }
+                var coverBtn = document.getElementById('coverBtnYear' + y);
+                if (coverBtn) {
+                    if (y === year) {
+                        coverBtn.className = 'px-3 py-1.5 rounded-lg font-prompt text-xs font-bold bg-blue-700 text-white shadow-sm transition';
+                    } else {
+                        coverBtn.className = 'px-3 py-1.5 rounded-lg font-prompt text-xs font-medium text-slate-600 hover:bg-slate-100 transition';
+                    }
+                }
+            });
+        }
+
+        function updateCoverMetadataUI(year) {
+            var meta = EXAM_METADATA[year];
+            if (!meta) return;
+            var totalQ = (MASTER_QUESTIONS_BY_YEAR[year] || []).length;
+
+            var subtitleEl = document.getElementById('topExamDateSubtitle');
+            if (subtitleEl) subtitleEl.textContent = meta.examDateSubtitle;
+
+            var coverSubEl = document.getElementById('coverBannerSubtitle');
+            if (coverSubEl) coverSubEl.textContent = meta.coverBannerSubtitle;
+
+            var coverDateEl = document.getElementById('coverExamDateText');
+            if (coverDateEl) coverDateEl.innerHTML = meta.coverExamDateText;
+
+            var btnTimedTitle = document.getElementById('btnTimedTitle');
+            if (btnTimedTitle) btnTimedTitle.textContent = 'เริ่มทำข้อสอบแบบจับเวลา (' + meta.durationMinutes + ' นาที)';
+
+            var btnTimedDesc = document.getElementById('btnTimedDesc');
+            if (btnTimedDesc) {
+                btnTimedDesc.textContent = 'ทำข้อสอบครบทั้ง ' + totalQ + ' ข้อภายในเวลา ' + meta.durationMinutes + ' นาที พร้อมระบายกระดาษคำตอบ 2B และตรวจผลคะแนนเมื่อกดส่งกระดาษคำตอบ';
+            }
+
+            var scoringBox = document.getElementById('coverScoringBox');
+            if (scoringBox) {
+                var p2Start = meta.part1Count + 1;
+                var p2Detail = meta.part2Type === 'multi2'
+                    ? 'แบบปรนัย 6 ตัวเลือก เลือก 2 คำตอบ จำนวน 2 ข้อ ข้อละ <strong>5 คะแนน</strong> (ตอบถูก 1 คำตอบได้ 2.5 คะแนน)'
+                    : 'แบบปรนัยเลือกตอบเชิงซ้อน (ใช่/ไม่ใช่) จำนวน 2 ข้อ ข้อละ <strong>' + (meta.part2TotalPoints / 2) + ' คะแนน</strong> (' + (meta.year === '2563' ? 'ถูก 3 ข้อย่อยได้ 6.3 คะแนน, ถูก 2 ข้อย่อยได้ 3.15 คะแนน' : 'ถูก 3 ข้อย่อยได้ ' + (meta.part2TotalPoints / 2) + ' คะแนน, ถูก 2 ข้อย่อยได้ 2.5 คะแนน') + ')';
+                scoringBox.innerHTML =
+                    '<p class="font-prompt font-bold text-blue-950">เกณฑ์การให้คะแนน ปีการศึกษา ' + meta.year + ' (คะแนนเต็ม 100 คะแนน • ' + totalQ + ' ข้อ)</p>' +
+                    '<ul class="list-disc list-inside text-slate-700 space-y-1 text-xs leading-relaxed">' +
+                        '<li><strong>ตอนที่ 1 (ข้อ 1 - ' + meta.part1Count + '):</strong> แบบปรนัย 4 ตัวเลือก จำนวน ' + meta.part1Count + ' ข้อ ข้อละ <strong>' + meta.part1PointsEach + ' คะแนน</strong> (รวม ' + meta.part1TotalPoints + ' คะแนน)</li>' +
+                        '<li><strong>ตอนที่ 2 (ข้อ ' + p2Start + ' - ' + totalQ + '):</strong> ' + p2Detail + ' (รวม ' + meta.part2TotalPoints + ' คะแนน)</li>' +
+                    '</ul>';
+            }
+
+            var p1Title = document.getElementById('omrPart1Title');
+            var p1Sub = document.getElementById('omrPart1Subtitle');
+            var p2Title = document.getElementById('omrPart2Title');
+            var p2Sub = document.getElementById('omrPart2Subtitle');
+            if (p1Title) p1Title.textContent = meta.omrPart1Title;
+            if (p1Sub) p1Sub.textContent = meta.omrPart1Subtitle;
+            if (p2Title) p2Title.textContent = meta.omrPart2Title;
+            if (p2Sub) p2Sub.textContent = meta.omrPart2Subtitle;
+
+            updateYearButtonsHighlight(year);
+            updateSetCodeUI();
+        }
+
+        // ==========================================
+        // AUTO-SAVE DRAFT & ACCIDENTAL SWITCH PROTECTION
+        // ==========================================
+        function getDraftStorageKey(year) {
+            return DRAFT_STORAGE_PREFIX + String(year);
+        }
+
         function countAnsweredQuestions() {
             var count = 0;
             QUESTIONS.forEach(function(q) {
-                if (isQuestionAnswered(q) || isQuestionPartiallyAnswered(q)) count++;
+                if (isQuestionAnswered(q)) count++;
             });
             return count;
         }
 
         function saveCurrentExamDraft() {
-            if (isSubmitted) return;
             var examViewEl = document.getElementById('examView');
-            if (!examViewEl || examViewEl.classList.contains('hidden')) return;
-
-            var answeredCount = countAnsweredQuestions();
-            if (answeredCount === 0 && currentQuestionIndex === 0) return;
-
-            var draftObj = {
-                examYear: currentExamYear,
+            if (!examViewEl || examViewEl.classList.contains('hidden') || isSubmitted || !QUESTIONS || QUESTIONS.length === 0) {
+                return;
+            }
+            var draft = {
+                year: currentExamYear,
+                setCode: currentSetCode,
+                questionOrder: QUESTIONS.map(function(q) { return q.origId || q.id; }),
+                userAnswers: userAnswers,
+                bookmarks: Array.from(bookmarkedQuestions),
+                revealed: Array.from(practiceRevealed),
                 examMode: examMode,
                 currentQuestionIndex: currentQuestionIndex,
                 remainingSeconds: remainingSeconds,
-                userAnswers: userAnswers,
-                bookmarks: Array.from(bookmarkedQuestions),
-                studentName: (document.getElementById('studentName') ? document.getElementById('studentName').value : ''),
-                studentSeatId: (document.getElementById('studentSeatId') ? document.getElementById('studentSeatId').value : ''),
-                studentPlace: (document.getElementById('studentPlace') ? document.getElementById('studentPlace').value : ''),
-                studentRoom: (document.getElementById('studentRoom') ? document.getElementById('studentRoom').value : ''),
+                answeredCount: countAnsweredQuestions(),
+                totalCount: QUESTIONS.length,
+                studentName: document.getElementById('studentName') ? document.getElementById('studentName').value : '',
+                studentSeatId: document.getElementById('studentSeatId') ? document.getElementById('studentSeatId').value : '',
+                studentPlace: document.getElementById('studentPlace') ? document.getElementById('studentPlace').value : '',
+                studentRoom: document.getElementById('studentRoom') ? document.getElementById('studentRoom').value : '',
                 savedAt: new Date().toISOString()
             };
             try {
-                localStorage.setItem(DRAFT_STORAGE_PREFIX + currentExamYear, JSON.stringify(draftObj));
-                var pill = document.getElementById('autoSaveStatusPill');
-                if (pill) {
-                    var now = new Date();
-                    var timeStr = (now.getHours() < 10 ? '0' : '') + now.getHours() + ':' + (now.getMinutes() < 10 ? '0' : '') + now.getMinutes();
-                    pill.innerHTML = '<i class="ph-fill ph-cloud-check"></i> เซฟอัตโนมัติ (' + timeStr + ' น.)';
-                }
+                localStorage.setItem(getDraftStorageKey(currentExamYear), JSON.stringify(draft));
             } catch (e) {}
         }
 
-        function getExamDraft(year) {
+        function loadExamDraft(year) {
             try {
-                var raw = localStorage.getItem(DRAFT_STORAGE_PREFIX + year);
+                var raw = localStorage.getItem(getDraftStorageKey(year));
                 if (!raw) return null;
                 return JSON.parse(raw);
             } catch (e) {
@@ -8602,190 +8896,101 @@
 
         function clearExamDraft(year) {
             try {
-                localStorage.removeItem(DRAFT_STORAGE_PREFIX + (year || currentExamYear));
+                localStorage.removeItem(getDraftStorageKey(year));
             } catch (e) {}
-            updateDraftBannerOnCover();
-        }
-
-        function discardCurrentYearDraft() {
-            clearExamDraft(currentExamYear);
-            initializeAnswersState();
         }
 
         function updateDraftBannerOnCover() {
             var banner = document.getElementById('draftResumeBanner');
-            var infoText = document.getElementById('draftResumeInfoText');
-            if (!banner || !infoText) return;
-
-            var draft = getExamDraft(currentExamYear);
-            if (!draft || !draft.userAnswers) {
+            var infoEl = document.getElementById('draftResumeInfoText');
+            if (!banner || !infoEl) return;
+            var draft = loadExamDraft(currentExamYear);
+            if (draft && draft.totalCount > 0) {
+                var mins = Math.floor((draft.remainingSeconds || 0) / 60);
+                var secs = (draft.remainingSeconds || 0) % 60;
+                var timeStr = draft.examMode === 'timed'
+                    ? (' • เวลาคงเหลือ ' + String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0') + ' นาที')
+                    : ' • โหมดฝึกซ้อม';
+                infoEl.textContent = 'ปีการศึกษา ' + draft.year + ' (ชุด ' + (draft.setCode || '100') + ') • ทำไปแล้ว ' + (draft.answeredCount || 0) + '/' + draft.totalCount + ' ข้อ' + timeStr;
+                banner.classList.remove('hidden');
+            } else {
                 banner.classList.add('hidden');
-                return;
             }
-
-            var qs = getQuestionsForYear(currentExamYear);
-            var ansCount = 0;
-            qs.forEach(function(q) {
-                var ans = draft.userAnswers[q.id];
-                if (q.type === 'complexYesNo') {
-                    if (ans && typeof ans === 'object' && Object.keys(ans).length > 0) ansCount++;
-                } else if (Array.isArray(ans) && ans.length > 0) {
-                    ansCount++;
-                }
-            });
-
-            if (ansCount === 0) {
-                banner.classList.add('hidden');
-                return;
-            }
-
-            var minsLeft = Math.floor((draft.remainingSeconds || 0) / 60);
-            infoText.textContent = 'ชุดข้อสอบปีการศึกษา ' + currentExamYear + ' • ตอบไว้แล้ว ' + ansCount + ' / ' + qs.length + ' ข้อ' +
-                (draft.examMode === 'timed' ? ' (เวลาที่เหลือประมาณ ' + minsLeft + ' นาที)' : ' (โหมดฝึกซ้อม)');
-            banner.classList.remove('hidden');
         }
 
         function resumeExamFromDraft() {
-            var draft = getExamDraft(currentExamYear);
+            var draft = loadExamDraft(currentExamYear);
             if (!draft) {
-                startExam('timed');
+                updateDraftBannerOnCover();
                 return;
             }
+            if (draft.studentName && document.getElementById('studentName')) document.getElementById('studentName').value = draft.studentName;
+            if (draft.studentSeatId && document.getElementById('studentSeatId')) document.getElementById('studentSeatId').value = draft.studentSeatId;
+            if (draft.studentPlace && document.getElementById('studentPlace')) document.getElementById('studentPlace').value = draft.studentPlace;
+            if (draft.studentRoom && document.getElementById('studentRoom')) document.getElementById('studentRoom').value = draft.studentRoom;
 
             examMode = draft.examMode || 'timed';
+            currentSetCode = draft.setCode || currentSetCode;
             isSubmitted = false;
-            initializeAnswersState();
+            viewMode = 'single';
+            currentQuestionIndex = Math.max(0, Number(draft.currentQuestionIndex || 0));
 
-            if (draft.userAnswers) {
-                userAnswers = draft.userAnswers;
-            }
-            if (Array.isArray(draft.bookmarks)) {
-                bookmarkedQuestions = new Set(draft.bookmarks);
-            }
-            currentQuestionIndex = typeof draft.currentQuestionIndex === 'number' ? draft.currentQuestionIndex : 0;
             var meta = EXAM_METADATA[currentExamYear];
-            remainingSeconds = typeof draft.remainingSeconds === 'number' ? draft.remainingSeconds : (meta.durationMinutes || 60) * 60;
+            meta.questions = getQuestionsForYear(currentExamYear, draft.questionOrder);
+            QUESTIONS = meta.questions;
+            if (currentQuestionIndex >= QUESTIONS.length) currentQuestionIndex = 0;
 
-            if (draft.studentName && document.getElementById('studentName') && !document.getElementById('studentName').value) {
-                document.getElementById('studentName').value = draft.studentName;
-            }
-            if (draft.studentSeatId && document.getElementById('studentSeatId') && !document.getElementById('studentSeatId').value) {
-                document.getElementById('studentSeatId').value = draft.studentSeatId;
-            }
-            if (draft.studentPlace && document.getElementById('studentPlace') && !document.getElementById('studentPlace').value) {
-                document.getElementById('studentPlace').value = draft.studentPlace;
-            }
-            if (draft.studentRoom && document.getElementById('studentRoom') && !document.getElementById('studentRoom').value) {
-                document.getElementById('studentRoom').value = draft.studentRoom;
-            }
-
-            var nameVal = (document.getElementById('studentName').value || '').trim();
-            var seatVal = (document.getElementById('studentSeatId').value || '').trim();
-            var roomVal = (document.getElementById('studentRoom').value || '').trim();
-
-            document.getElementById('omrStudentNameDisplay').textContent = nameVal || 'ผู้เข้าสอบ (ไม่ระบุชื่อ)';
-            var seatRoomParts = [];
-            if (seatVal) seatRoomParts.push('เลขที่นั่ง ' + seatVal);
-            if (roomVal) seatRoomParts.push('ห้อง ' + roomVal);
-            document.getElementById('omrStudentSeatDisplay').textContent = seatRoomParts.join(' • ');
-
-            document.getElementById('coverView').classList.add('hidden');
-            document.getElementById('examView').classList.remove('hidden');
-            document.getElementById('examTopControls').classList.remove('hidden');
-            document.getElementById('examTopControls').classList.add('flex');
-            document.getElementById('resultSummaryBanner').classList.add('hidden');
-
-            updateSubmitButtonsState(false);
-            setExamViewMode('single');
-
-            if (timerInterval) clearInterval(timerInterval);
-            if (examMode === 'timed') {
-                updateTimerDisplay();
-                timerInterval = setInterval(function() {
-                    if (remainingSeconds > 0) {
-                        remainingSeconds--;
-                        updateTimerDisplay();
-                        if (remainingSeconds % 10 === 0) saveCurrentExamDraft();
-                    } else {
-                        clearInterval(timerInterval);
-                        gradeExam();
-                    }
-                }, 1000);
-            } else {
-                var tDisp = document.getElementById('timerDisplay');
-                if (tDisp) {
-                    tDisp.textContent = 'โหมดฝึกซ้อม';
-                    tDisp.className = 'font-prompt font-semibold text-xs sm:text-sm text-emerald-700';
+            userAnswers = draft.userAnswers || {};
+            QUESTIONS.forEach(function(q) {
+                if (userAnswers[q.id] === undefined) {
+                    if (q.type === 'multi2') userAnswers[q.id] = [];
+                    else if (q.type === 'complexYesNo') userAnswers[q.id] = {};
+                    else userAnswers[q.id] = null;
                 }
-            }
+            });
+            bookmarkedQuestions = new Set(Array.isArray(draft.bookmarks) ? draft.bookmarks : []);
+            practiceRevealed = new Set(Array.isArray(draft.revealed) ? draft.revealed : []);
+            remainingSeconds = typeof draft.remainingSeconds === 'number' ? draft.remainingSeconds : (meta.durationMinutes * 60);
 
-            renderAll();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            enterActiveExamScreen();
         }
 
-        function getQuestionsForYear(year) {
-            if (year === '2568') return window.QUESTIONS_2568 || [];
-            if (year === '2567') return window.QUESTIONS_2567 || [];
-            if (year === '2566') return window.QUESTIONS_2566 || [];
-            if (year === '2565') return window.QUESTIONS_2565 || [];
-            if (year === '2564') return window.QUESTIONS_2564 || [];
-            if (year === '2563') return window.QUESTIONS_2563 || [];
-            if (year === '2562') return window.QUESTIONS_2562 || [];
-            if (year === '2561') return window.QUESTIONS_2561 || [];
-            if (year === '2560') return window.QUESTIONS_2560 || [];
-            return window.QUESTIONS_2559 || [];
+        function discardCurrentYearDraft() {
+            clearExamDraft(currentExamYear);
+            updateDraftBannerOnCover();
         }
 
-        // Switch between Academic Years 2568 down to 2559 (with accidental click protection)
         function switchExamYear(year) {
             if (!EXAM_METADATA[year]) return;
-            if (year === currentExamYear) {
-                var examViewEl = document.getElementById('examView');
-                if (examViewEl && !examViewEl.classList.contains('hidden')) {
-                    return;
-                }
-            }
-
-            // Protection: If student is currently inside the exam view, warn before switching years!
             var examViewEl = document.getElementById('examView');
-            var isInsideExam = examViewEl && !examViewEl.classList.contains('hidden');
-            if (isInsideExam && year !== currentExamYear) {
-                saveCurrentExamDraft();
+            var inActiveExam = examViewEl && !examViewEl.classList.contains('hidden');
+
+            if (inActiveExam && !isSubmitted) {
+                if (year === currentExamYear) return;
                 openSwitchYearModal(year);
                 return;
             }
-
             executeSwitchExamYear(year);
         }
 
         function openSwitchYearModal(targetYear) {
             pendingSwitchTargetYear = targetYear;
-            var ansCount = countAnsweredQuestions();
-            var totalQ = QUESTIONS.length;
-            var msgEl = document.getElementById('switchYearModalMessage');
-            var subNoteEl = document.getElementById('switchYearSaveNote');
-            var confirmBtnLabel = document.getElementById('confirmSwitchYearBtnLabel');
-
-            if (msgEl) {
-                if (!isSubmitted) {
-                    msgEl.innerHTML = 'คุณกำลังทำข้อสอบ <strong>ปีการศึกษา ' + currentExamYear + '</strong> อยู่ (ทำไปแล้ว <strong>' + ansCount + ' / ' + totalQ + ' ข้อ</strong>) หากกดสลับไป <strong>ปีการศึกษา ' + targetYear + '</strong> ตอนนี้ คุณจะออกจากข้อสอบชุดปัจจุบัน';
-                } else {
-                    msgEl.innerHTML = 'คุณกำลังดูผลคะแนนและเฉลยของ <strong>ปีการศึกษา ' + currentExamYear + '</strong> คุณต้องการสลับไปยังหน้าปกข้อสอบ <strong>ปีการศึกษา ' + targetYear + '</strong> ใช่หรือไม่?';
-                }
-            }
-            if (subNoteEl) {
-                if (!isSubmitted && ansCount > 0) {
-                    subNoteEl.classList.remove('hidden');
-                    subNoteEl.innerHTML = '<i class="ph-fill ph-floppy-disk text-emerald-600 text-base shrink-0"></i> <span><strong>ระบบเซฟคำตอบให้แล้ว:</strong> คำตอบทั้ง ' + ansCount + ' ข้อของปี ' + currentExamYear + ' ถูกบันทึกไว้ชั่วคราวแล้ว สามารถกลับมาทำต่อภายหลังได้</span>';
-                } else {
-                    subNoteEl.classList.add('hidden');
-                }
-            }
-            if (confirmBtnLabel) {
-                confirmBtnLabel.textContent = 'ยืนยันสลับไปปี ' + targetYear;
-            }
-
             var modal = document.getElementById('switchYearModal');
+            var msgEl = document.getElementById('switchYearModalMessage');
+            var saveNoteEl = document.getElementById('switchYearSaveNote');
+            var btnLabel = document.getElementById('confirmSwitchYearBtnLabel');
+
+            var answered = countAnsweredQuestions();
+            if (msgEl) {
+                msgEl.textContent = 'คุณกำลังทำข้อสอบปีการศึกษา ' + currentExamYear + ' (ตอบไปแล้ว ' + answered + ' จาก ' + QUESTIONS.length + ' ข้อ) ต้องการเปลี่ยนไปทำข้อสอบปีการศึกษา ' + targetYear + ' ใช่หรือไม่?';
+            }
+            if (saveNoteEl) {
+                saveNoteEl.innerHTML = '<i class="ph-fill ph-floppy-disk text-emerald-700 text-base shrink-0 mt-0.5"></i><span>ระบบจะบันทึกคำตอบและเวลาที่เหลือของปีการศึกษา ' + currentExamYear + ' ไว้ให้อัตโนมัติ สามารถกลับมาทำต่อภายหลังได้โดยข้อมูลไม่หาย</span>';
+                saveNoteEl.classList.remove('hidden');
+            }
+            if (btnLabel) {
+                btnLabel.textContent = 'เปลี่ยนไปปี ' + targetYear;
+            }
             if (modal) {
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
@@ -8805,6 +9010,7 @@
             var target = pendingSwitchTargetYear;
             closeSwitchYearModal();
             if (target) {
+                saveCurrentExamDraft();
                 executeSwitchExamYear(target);
             }
         }
@@ -8812,159 +9018,78 @@
         function executeSwitchExamYear(year) {
             if (!EXAM_METADATA[year]) return;
             currentExamYear = year;
+            // Draw a fresh non-repeating random set code (100, 200, 300, or 400) for every click/year
+            currentSetCode = drawNextRandomSetForYear(year);
             var meta = EXAM_METADATA[year];
             meta.questions = getQuestionsForYear(year);
             QUESTIONS = meta.questions;
 
-            ['2568', '2567', '2566', '2565', '2564', '2563', '2562', '2561', '2560', '2559'].forEach(function(y) {
-                var topBtn = document.getElementById('btnSelectYear' + y);
-                if (topBtn) {
-                    topBtn.className = (year === y)
-                        ? 'px-2.5 py-1 rounded-lg bg-blue-700 text-white font-semibold shadow-sm transition shrink-0'
-                        : 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-white/60 transition shrink-0';
-                }
-                var coverBtn = document.getElementById('coverBtnYear' + y);
-                if (coverBtn) {
-                    coverBtn.className = (year === y)
-                        ? 'px-3 py-1.5 rounded-lg font-prompt text-xs font-bold bg-blue-700 text-white shadow-sm transition'
-                        : 'px-3 py-1.5 rounded-lg font-prompt text-xs font-medium text-slate-600 hover:bg-slate-100 transition';
-                }
-            });
-
-            document.getElementById('topYearBadge').textContent = meta.badgeText;
-            document.getElementById('topExamDateSubtitle').textContent = meta.examDateSubtitle;
-            document.getElementById('coverBannerSubtitle').textContent = meta.coverBannerSubtitle;
-            document.getElementById('coverExamDateText').innerHTML = meta.coverExamDateText;
-
-            var coverScoringBox = document.getElementById('coverScoringBox');
-            if (coverScoringBox) {
-                if (year === '2568' || year === '2567' || year === '2566' || year === '2565' || year === '2564') {
-                    coverScoringBox.innerHTML =
-                        '<p class="font-prompt font-bold text-blue-950">เกณฑ์การให้คะแนน ปีการศึกษา ' + year + ' (คะแนนเต็ม 100 คะแนน • 20 ข้อ)</p>' +
-                        '<ul class="list-disc list-inside text-slate-700 space-y-1 text-xs leading-relaxed">' +
-                        '<li><strong>ตอนที่ 1 (ข้อ 1 - 18):</strong> แบบปรนัย 4 ตัวเลือก จำนวน 18 ข้อ ข้อละ <strong>5 คะแนน</strong> (รวม 90 คะแนน)</li>' +
-                        '<li><strong>ตอนที่ 2 (ข้อ 19 - 20):</strong> แบบปรนัยเลือกตอบเชิงซ้อน (ใช่/ไม่ใช่) 3 ข้อย่อย ข้อละ <strong>5 คะแนน</strong> (ตอบถูก 3 ข้อย่อยได้ 5 คะแนน, ตอบถูก 2 ข้อย่อยได้ 2.5 คะแนน)</li>' +
-                        '</ul>';
-                } else if (year === '2563') {
-                    coverScoringBox.innerHTML =
-                        '<p class="font-prompt font-bold text-blue-950">เกณฑ์การให้คะแนน ปีการศึกษา 2563 (คะแนนเต็ม 100 คะแนน • 25 ข้อ)</p>' +
-                        '<ul class="list-disc list-inside text-slate-700 space-y-1 text-xs leading-relaxed">' +
-                        '<li><strong>ตอนที่ 1 (ข้อ 1 - 23):</strong> แบบปรนัย 4 ตัวเลือก จำนวน 23 ข้อ ข้อละ <strong>3.8 คะแนน</strong> (รวม 87.4 คะแนน)</li>' +
-                        '<li><strong>ตอนที่ 2 (ข้อ 24 - 25):</strong> แบบปรนัยเลือกตอบเชิงซ้อน (ใช่/ไม่ใช่) 3 ข้อย่อย ข้อละ <strong>6.3 คะแนน</strong> (ตอบถูก 3 ข้อย่อยได้ 6.3 คะแนน, ตอบถูก 2 ข้อย่อยได้ 3.15 คะแนน)</li>' +
-                        '</ul>';
-                } else if (year === '2562') {
-                    coverScoringBox.innerHTML =
-                        '<p class="font-prompt font-bold text-blue-950">เกณฑ์การให้คะแนน ปีการศึกษา 2562 (คะแนนเต็ม 100 คะแนน • 28 ข้อ)</p>' +
-                        '<ul class="list-disc list-inside text-slate-700 space-y-1 text-xs leading-relaxed">' +
-                        '<li><strong>ตอนที่ 1 (ข้อ 1 - 26):</strong> แบบปรนัย 4 ตัวเลือก จำนวน 26 ข้อ ข้อละ <strong>3.5 คะแนน</strong> (รวม 91 คะแนน)</li>' +
-                        '<li><strong>ตอนที่ 2 (ข้อ 27 - 28):</strong> แบบปรนัยเลือกตอบเชิงซ้อน (ใช่/ไม่ใช่) 3 ข้อย่อย ข้อละ <strong>4.5 คะแนน</strong> (ตอบถูก 3 ข้อย่อยได้ 4.5 คะแนน, ตอบถูก 2 ข้อย่อยได้ 2.5 คะแนน)</li>' +
-                        '</ul>';
-                } else if (year === '2561' || year === '2560') {
-                    coverScoringBox.innerHTML =
-                        '<p class="font-prompt font-bold text-blue-950">เกณฑ์การให้คะแนน ปีการศึกษา ' + year + ' (คะแนนเต็ม 100 คะแนน • 32 ข้อ)</p>' +
-                        '<ul class="list-disc list-inside text-slate-700 space-y-1 text-xs leading-relaxed">' +
-                        '<li><strong>ตอนที่ 1 (ข้อ 1 - 30):</strong> แบบปรนัย 4 ตัวเลือก จำนวน 30 ข้อ ข้อละ <strong>3 คะแนน</strong> (รวม 90 คะแนน)</li>' +
-                        '<li><strong>ตอนที่ 2 (ข้อ 31 - 32):</strong> แบบปรนัยเลือกตอบเชิงซ้อน (ใช่/ไม่ใช่) 3 ข้อย่อย ข้อละ <strong>5 คะแนน</strong> (ตอบถูก 3 ข้อย่อยได้ 5 คะแนน, ตอบถูก 2 ข้อย่อยได้ 2.5 คะแนน)</li>' +
-                        '</ul>';
-                } else {
-                    coverScoringBox.innerHTML =
-                        '<p class="font-prompt font-bold text-blue-950">เกณฑ์การให้คะแนน ปีการศึกษา 2559 (คะแนนเต็ม 100 คะแนน • 32 ข้อ)</p>' +
-                        '<ul class="list-disc list-inside text-slate-700 space-y-1 text-xs leading-relaxed">' +
-                        '<li><strong>ตอนที่ 1 (ข้อ 1 - 30):</strong> แบบปรนัย 4 ตัวเลือก จำนวน 30 ข้อ ข้อละ <strong>3 คะแนน</strong> (รวม 90 คะแนน)</li>' +
-                        '<li><strong>ตอนที่ 2 (ข้อ 31 - 32):</strong> แบบปรนัย 6 ตัวเลือก เลือก 2 คำตอบ ข้อละ <strong>5 คะแนน</strong> (ตอบถูก 1 คำตอบได้ 2.5 คะแนน)</li>' +
-                        '</ul>';
-                }
-            }
-
-            document.getElementById('btnTimedTitle').textContent = 'เริ่มทำข้อสอบแบบจับเวลา (' + meta.durationMinutes + ' นาที)';
-            document.getElementById('btnTimedDesc').textContent = 'ทำข้อสอบครบทั้ง ' + QUESTIONS.length + ' ข้อภายในเวลา ' + meta.durationMinutes + ' นาที พร้อมระบายกระดาษคำตอบ 2B และตรวจผลคะแนนเมื่อกดส่งกระดาษคำตอบ';
-
-            var omrP1Title = document.getElementById('omrPart1Title');
-            var omrP1Sub = document.getElementById('omrPart1Subtitle');
-            if (omrP1Title && meta.omrPart1Title) omrP1Title.textContent = meta.omrPart1Title;
-            if (omrP1Sub && meta.omrPart1Subtitle) omrP1Sub.textContent = meta.omrPart1Subtitle;
-
-            document.getElementById('omrPart2Title').textContent = meta.omrPart2Title;
-            document.getElementById('omrPart2Subtitle').textContent = meta.omrPart2Subtitle;
-
-            confirmResetExam();
+            updateCoverMetadataUI(year);
+            confirmResetExam(true);
             updateDraftBannerOnCover();
         }
-        window.switchExamYear = switchExamYear;
-        window.openSwitchYearModal = openSwitchYearModal;
-        window.closeSwitchYearModal = closeSwitchYearModal;
-        window.confirmSwitchYearAction = confirmSwitchYearAction;
-        window.resumeExamFromDraft = resumeExamFromDraft;
-        window.discardCurrentYearDraft = discardCurrentYearDraft;
 
+        // ==========================================
+        // ANSWERS STATE & EXAM LIFECYCLE
+        // ==========================================
         function initializeAnswersState() {
+            var meta = EXAM_METADATA[currentExamYear];
+            meta.questions = getQuestionsForYear(currentExamYear);
+            QUESTIONS = meta.questions;
             userAnswers = {};
             bookmarkedQuestions = new Set();
             practiceRevealed = new Set();
-            QUESTIONS = getQuestionsForYear(currentExamYear);
-            for (var i = 0; i < QUESTIONS.length; i++) {
-                var q = QUESTIONS[i];
-                if (q.type === 'complexYesNo') {
+            QUESTIONS.forEach(function(q) {
+                if (q.type === 'multi2') {
+                    userAnswers[q.id] = [];
+                } else if (q.type === 'complexYesNo') {
                     userAnswers[q.id] = {};
                 } else {
-                    userAnswers[q.id] = [];
+                    userAnswers[q.id] = null;
                 }
-            }
+            });
+            updateSetCodeUI();
         }
-        initializeAnswersState();
 
         function isQuestionAnswered(q) {
             var ans = userAnswers[q.id];
+            if (q.type === 'multi2') {
+                return Array.isArray(ans) && ans.length === 2;
+            }
             if (q.type === 'complexYesNo') {
-                if (!ans || typeof ans !== 'object') return false;
-                return (q.subQuestions || []).every(function(sq) {
+                if (!ans || typeof ans !== 'object' || !Array.isArray(q.subQuestions)) return false;
+                return q.subQuestions.every(function(sq) {
                     return ans[sq.subId] === 1 || ans[sq.subId] === 2;
                 });
             }
-            if (!Array.isArray(ans)) return false;
-            if (q.type === 'multi2') return ans.length === 2;
-            return ans.length === 1;
+            return ans !== null && ans !== undefined;
         }
 
-        function isQuestionPartiallyAnswered(q) {
-            var ans = userAnswers[q.id];
-            if (q.type === 'complexYesNo') {
-                if (!ans || typeof ans !== 'object') return false;
-                var count = (q.subQuestions || []).filter(function(sq) {
-                    return ans[sq.subId] === 1 || ans[sq.subId] === 2;
-                }).length;
-                return count > 0 && count < (q.subQuestions || []).length;
+        function updateSubmitButtonsState(submitted) {
+            var btns = [
+                { id: 'submitExamBtn', defaultHtml: '<i class="ph-bold ph-check-circle text-sm"></i><span>ส่งคำตอบ</span>', doneHtml: '<i class="ph-bold ph-check text-sm"></i><span>ส่งแล้ว</span>' },
+                { id: 'bottomSubmitExamBtn', defaultHtml: '<i class="ph-bold ph-check-circle"></i> <span>ส่งกระดาษคำตอบ</span>', doneHtml: '<i class="ph-bold ph-check-circle"></i> <span>ส่งกระดาษคำตอบแล้ว</span>' },
+                { id: 'omrSubmitExamBtn', defaultHtml: '<i class="ph-bold ph-check-square-offset text-base"></i><span>ส่งกระดาษคำตอบตรวจคะแนน</span>', doneHtml: '<i class="ph-bold ph-check-square-offset text-base"></i><span>ส่งกระดาษคำตอบแล้ว</span>' }
+            ];
+            btns.forEach(function(cfg) {
+                var el = document.getElementById(cfg.id);
+                if (!el) return;
+                if (submitted) {
+                    el.disabled = true;
+                    el.innerHTML = cfg.doneHtml;
+                    el.classList.remove('bg-emerald-600', 'hover:bg-emerald-700');
+                    el.classList.add('bg-slate-400', 'cursor-not-allowed', 'opacity-85');
+                } else {
+                    el.disabled = false;
+                    el.innerHTML = cfg.defaultHtml;
+                    el.classList.remove('bg-slate-400', 'cursor-not-allowed', 'opacity-85');
+                    el.classList.add('bg-emerald-600', 'hover:bg-emerald-700');
+                }
+            });
+            var confirmBtn = document.getElementById('confirmSubmitExamBtn');
+            if (confirmBtn) {
+                confirmBtn.disabled = !!submitted;
             }
-            if (!Array.isArray(ans)) return false;
-            if (q.type === 'multi2') return ans.length === 1;
-            return false;
-        }
-
-        function getQuestionScore(q) {
-            var ans = userAnswers[q.id];
-            if (q.type === 'single') {
-                if (!Array.isArray(ans) || ans.length === 0) return 0;
-                return q.correct.indexOf(ans[0]) !== -1 ? q.points : 0;
-            } else if (q.type === 'multi2') {
-                if (!Array.isArray(ans) || ans.length === 0) return 0;
-                var correctCount = 0;
-                ans.forEach(function(a) {
-                    if (q.correct.indexOf(a) !== -1) correctCount++;
-                });
-                if (correctCount === 2) return q.points;
-                if (correctCount === 1) return 2.5;
-                return 0;
-            } else if (q.type === 'complexYesNo') {
-                if (!ans || typeof ans !== 'object') return 0;
-                var subCorrect = 0;
-                (q.subQuestions || []).forEach(function(sq) {
-                    if (ans[sq.subId] === sq.correct) subCorrect++;
-                });
-                if (subCorrect === 3) return q.points;
-                if (subCorrect === 2) return q.partialPoints || 2.5;
-                return 0;
-            }
-            return 0;
         }
 
         function startExam(mode) {
@@ -8972,118 +9097,180 @@
             isSubmitted = false;
             currentQuestionIndex = 0;
             viewMode = 'single';
+            // Draw a fresh non-repeating random set and newly shuffled question order every time an exam starts
+            currentSetCode = drawNextRandomSetForYear(currentExamYear);
+            clearExamDraft(currentExamYear);
             initializeAnswersState();
 
             var meta = EXAM_METADATA[currentExamYear];
-            remainingSeconds = (meta.durationMinutes || 60) * 60;
+            remainingSeconds = meta.durationMinutes * 60;
+            enterActiveExamScreen();
+            saveCurrentExamDraft();
+        }
 
-            var nameVal = (document.getElementById('studentName').value || '').trim();
-            var seatVal = (document.getElementById('studentSeatId').value || '').trim();
-            var roomVal = (document.getElementById('studentRoom').value || '').trim();
-
-            document.getElementById('omrStudentNameDisplay').textContent = nameVal || 'ผู้เข้าสอบ (ไม่ระบุชื่อ)';
-            var seatRoomParts = [];
-            if (seatVal) seatRoomParts.push('เลขที่นั่ง ' + seatVal);
-            if (roomVal) seatRoomParts.push('ห้อง ' + roomVal);
-            document.getElementById('omrStudentSeatDisplay').textContent = seatRoomParts.join(' • ');
-
-            document.getElementById('coverView').classList.add('hidden');
-            document.getElementById('examView').classList.remove('hidden');
-            document.getElementById('examTopControls').classList.remove('hidden');
-            document.getElementById('examTopControls').classList.add('flex');
-            document.getElementById('resultSummaryBanner').classList.add('hidden');
-
+        function enterActiveExamScreen() {
+            var meta = EXAM_METADATA[currentExamYear];
+            updateCoverMetadataUI(currentExamYear);
             updateSubmitButtonsState(false);
 
-            setExamViewMode('single');
+            var nameVal = (document.getElementById('studentName') ? document.getElementById('studentName').value : '').trim() || 'ผู้เข้าสอบ (ไม่ระบุชื่อ)';
+            var seatVal = (document.getElementById('studentSeatId') ? document.getElementById('studentSeatId').value : '').trim();
+            var roomVal = (document.getElementById('studentRoom') ? document.getElementById('studentRoom').value : '').trim();
+            var placeVal = (document.getElementById('studentPlace') ? document.getElementById('studentPlace').value : '').trim();
 
+            var omrNameEl = document.getElementById('omrStudentNameDisplay');
+            if (omrNameEl) omrNameEl.textContent = nameVal;
+
+            var seatParts = [];
+            if (seatVal) seatParts.push('เลขที่นั่งสอบ ' + seatVal);
+            if (roomVal) seatParts.push('ห้อง ' + roomVal);
+            if (placeVal) seatParts.push(placeVal);
+            var omrSeatEl = document.getElementById('omrStudentSeatDisplay');
+            if (omrSeatEl) omrSeatEl.textContent = seatParts.join(' • ');
+
+            var coverView = document.getElementById('coverView');
+            var examView = document.getElementById('examView');
+            var topControls = document.getElementById('examTopControls');
+            var resultBanner = document.getElementById('resultSummaryBanner');
+
+            if (coverView) coverView.classList.add('hidden');
+            if (examView) examView.classList.remove('hidden');
+            if (topControls) {
+                topControls.classList.remove('hidden');
+                topControls.classList.add('flex');
+            }
+            if (resultBanner) resultBanner.classList.add('hidden');
+
+            var timerBox = document.getElementById('timerBox');
             if (timerInterval) clearInterval(timerInterval);
             if (examMode === 'timed') {
+                if (timerBox) timerBox.classList.remove('hidden');
                 updateTimerDisplay();
                 timerInterval = setInterval(function() {
-                    if (remainingSeconds > 0) {
-                        remainingSeconds--;
+                    if (isSubmitted) {
+                        clearInterval(timerInterval);
+                        return;
+                    }
+                    remainingSeconds--;
+                    if (remainingSeconds <= 0) {
+                        remainingSeconds = 0;
                         updateTimerDisplay();
-                        if (remainingSeconds % 10 === 0) saveCurrentExamDraft();
-                    } else {
                         clearInterval(timerInterval);
                         gradeExam();
+                        return;
                     }
+                    updateTimerDisplay();
+                    if (remainingSeconds % 10 === 0) saveCurrentExamDraft();
                 }, 1000);
             } else {
-                var tDisp = document.getElementById('timerDisplay');
-                if (tDisp) {
-                    tDisp.textContent = 'โหมดฝึกซ้อม';
-                    tDisp.className = 'font-prompt font-semibold text-xs sm:text-sm text-emerald-700';
-                }
+                if (timerBox) timerBox.classList.add('hidden');
             }
 
+            setExamViewMode(viewMode);
+            populateQuestionJumpSelect();
             renderAll();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function updateTimerDisplay() {
+            var el = document.getElementById('timerDisplay');
+            if (!el) return;
             var mins = Math.floor(remainingSeconds / 60);
             var secs = remainingSeconds % 60;
-            var str = (mins < 10 ? '0' + mins : mins) + ':' + (secs < 10 ? '0' + secs : secs);
-            var tDisp = document.getElementById('timerDisplay');
-            if (tDisp) {
-                tDisp.textContent = str;
+            el.textContent = String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+            var box = document.getElementById('timerBox');
+            if (box) {
                 if (remainingSeconds <= 300) {
-                    tDisp.className = 'font-mono font-bold text-sm sm:text-base text-rose-600 animate-pulse';
+                    box.className = 'flex items-center gap-1 bg-rose-50 px-2.5 py-1.5 rounded-xl border border-rose-300 font-prompt animate-pulse';
+                    el.className = 'font-mono font-bold text-xs sm:text-sm text-rose-700';
                 } else {
-                    tDisp.className = 'font-mono font-bold text-sm sm:text-base text-amber-900';
+                    box.className = 'flex items-center gap-1 bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-200 font-prompt';
+                    el.className = 'font-mono font-bold text-xs sm:text-sm text-amber-900';
                 }
             }
         }
 
+        function populateQuestionJumpSelect() {
+            var sel = document.getElementById('questionJumpSelect');
+            if (!sel) return;
+            sel.innerHTML = QUESTIONS.map(function(q, idx) {
+                var mark = bookmarkedQuestions.has(q.id) ? ' ★' : '';
+                var done = isQuestionAnswered(q) ? ' ✓' : '';
+                return '<option value="' + idx + '"' + (idx === currentQuestionIndex ? ' selected' : '') + '>ข้อที่ ' + q.id + ' (ตอนที่ ' + q.part + ')' + done + mark + '</option>';
+            }).join('');
+        }
+
         function setExamViewMode(mode) {
-            viewMode = mode;
-            var btnSingle = document.getElementById('viewSingleBtn');
-            var btnAll = document.getElementById('viewAllBtn');
-            var singleNav = document.getElementById('singleModeNavBar');
+            viewMode = mode === 'all' ? 'all' : 'single';
+            var singleBtn = document.getElementById('viewSingleBtn');
+            var allBtn = document.getElementById('viewAllBtn');
+            var topNav = document.getElementById('singleModeNavBar');
             var bottomNav = document.getElementById('singleModeBottomNav');
 
-            if (mode === 'single') {
-                if (btnSingle) btnSingle.className = 'px-2.5 py-1 rounded-lg bg-blue-700 text-white font-medium transition';
-                if (btnAll) btnAll.className = 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition';
-                if (singleNav) singleNav.classList.remove('hidden');
-                if (bottomNav) bottomNav.classList.remove('hidden');
-            } else {
-                if (btnAll) btnAll.className = 'px-2.5 py-1 rounded-lg bg-blue-700 text-white font-medium transition';
-                if (btnSingle) btnSingle.className = 'px-2.5 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition';
-                if (singleNav) singleNav.classList.add('hidden');
-                if (bottomNav) bottomNav.classList.add('hidden');
+            if (singleBtn && allBtn) {
+                if (viewMode === 'single') {
+                    singleBtn.className = 'px-2 py-1 rounded-lg bg-blue-700 text-white font-medium transition';
+                    allBtn.className = 'px-2 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition';
+                } else {
+                    allBtn.className = 'px-2 py-1 rounded-lg bg-blue-700 text-white font-medium transition';
+                    singleBtn.className = 'px-2 py-1 rounded-lg text-slate-600 hover:text-slate-900 transition';
+                }
             }
-            renderAll();
+            if (topNav) topNav.classList.toggle('hidden', viewMode === 'all');
+            if (bottomNav) bottomNav.classList.toggle('hidden', viewMode === 'all');
+            renderQuestions();
         }
 
         function navigateQuestion(delta) {
             var nextIdx = currentQuestionIndex + delta;
-            if (nextIdx >= 0 && nextIdx < QUESTIONS.length) {
-                currentQuestionIndex = nextIdx;
-                renderAll();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+            if (nextIdx < 0 || nextIdx >= QUESTIONS.length) return;
+            currentQuestionIndex = nextIdx;
+            if (viewMode === 'all') {
+                setExamViewMode('single');
+            } else {
+                renderQuestions();
             }
+            updateSingleNavControls();
+            saveCurrentExamDraft();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        function jumpToQuestion(qIndex) {
-            if (qIndex < 0 || qIndex >= QUESTIONS.length) return;
-            currentQuestionIndex = qIndex;
+        function jumpToQuestion(index) {
+            if (index < 0 || index >= QUESTIONS.length) return;
+            currentQuestionIndex = index;
             if (viewMode === 'all') {
-                var card = document.getElementById('question-card-' + (qIndex + 1));
-                if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                renderOMRSheet();
+                var cardEl = document.getElementById('questionCard_' + QUESTIONS[index].id);
+                if (cardEl) {
+                    cardEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
             } else {
-                renderAll();
+                renderQuestions();
+                updateSingleNavControls();
                 window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+            toggleMobileOMR(false);
+            saveCurrentExamDraft();
+        }
+
+        function updateSingleNavControls() {
+            var prevBtn = document.getElementById('prevQuestionBtn');
+            var nextBtn = document.getElementById('nextQuestionBtn');
+            var sel = document.getElementById('questionJumpSelect');
+            var bmLabel = document.getElementById('bookmarkTextLabel');
+            if (prevBtn) prevBtn.disabled = currentQuestionIndex <= 0;
+            if (nextBtn) nextBtn.disabled = currentQuestionIndex >= QUESTIONS.length - 1;
+            populateQuestionJumpSelect();
+            if (sel) sel.value = String(currentQuestionIndex);
+            var curQ = QUESTIONS[currentQuestionIndex];
+            if (bmLabel && curQ) {
+                bmLabel.textContent = bookmarkedQuestions.has(curQ.id) ? 'ยกเลิกเครื่องหมายทบทวน' : 'ทำเครื่องหมายทบทวน';
             }
         }
 
         function toggleBookmarkCurrent() {
-            var q = QUESTIONS[currentQuestionIndex];
-            if (!q) return;
-            toggleBookmark(q.id);
+            var curQ = QUESTIONS[currentQuestionIndex];
+            if (!curQ) return;
+            toggleBookmark(curQ.id);
         }
 
         function toggleBookmark(qId) {
@@ -9092,8 +9279,10 @@
             } else {
                 bookmarkedQuestions.add(qId);
             }
+            updateSingleNavControls();
+            renderQuestions();
+            renderOMRSheet();
             saveCurrentExamDraft();
-            renderAll();
         }
 
         function togglePracticeExplanation(qId) {
@@ -9103,495 +9292,469 @@
                 practiceRevealed.add(qId);
             }
             renderQuestions();
+            saveCurrentExamDraft();
         }
 
         function selectAnswer(qId, choiceNum) {
             if (isSubmitted) return;
-            var q = QUESTIONS[qId - 1];
+            var q = QUESTIONS.find(function(item) { return item.id === qId; });
             if (!q) return;
 
-            if (q.type === 'single') {
-                userAnswers[qId] = [choiceNum];
-            } else if (q.type === 'multi2') {
-                var current = Array.isArray(userAnswers[qId]) ? userAnswers[qId].slice() : [];
-                var idx = current.indexOf(choiceNum);
-                if (idx !== -1) {
-                    current.splice(idx, 1);
+            if (q.type === 'multi2') {
+                var arr = Array.isArray(userAnswers[qId]) ? userAnswers[qId].slice() : [];
+                var pos = arr.indexOf(choiceNum);
+                if (pos !== -1) {
+                    arr.splice(pos, 1);
                 } else {
-                    if (current.length < 2) {
-                        current.push(choiceNum);
-                    } else {
-                        current.shift();
-                        current.push(choiceNum);
+                    if (arr.length >= 2) {
+                        arr.shift();
                     }
+                    arr.push(choiceNum);
+                    arr.sort(function(a, b) { return a - b; });
                 }
-                current.sort(function(a, b) { return a - b; });
-                userAnswers[qId] = current;
+                userAnswers[qId] = arr;
+            } else {
+                userAnswers[qId] = choiceNum;
             }
-            saveCurrentExamDraft();
+
             renderAll();
+            saveCurrentExamDraft();
         }
 
         function selectSubAnswer(qId, subId, val) {
             if (isSubmitted) return;
-            if (!userAnswers[qId] || typeof userAnswers[qId] !== 'object' || Array.isArray(userAnswers[qId])) {
+            if (!userAnswers[qId] || typeof userAnswers[qId] !== 'object') {
                 userAnswers[qId] = {};
             }
             userAnswers[qId][subId] = val;
-            saveCurrentExamDraft();
             renderAll();
+            saveCurrentExamDraft();
         }
 
-        function buildChoiceItemHtml(q, cIdx, choiceText) {
-            var cNum = cIdx + 1;
-            var selectedArr = Array.isArray(userAnswers[q.id]) ? userAnswers[q.id] : [];
-            var isSelected = selectedArr.indexOf(cNum) !== -1;
-            var showKey = isSubmitted || practiceRevealed.has(q.id);
-            var isCorrectChoice = q.correct.indexOf(cNum) !== -1;
+        function updateProgressCounters() {
+            var answered = countAnsweredQuestions();
+            var total = QUESTIONS.length;
+            var pCount = document.getElementById('progressCountText');
+            var pTotal = document.getElementById('progressTotalText');
+            var omrBadge = document.getElementById('omrAnsweredBadge');
+            var mobAns = document.getElementById('mobileAnsweredCount');
+            var mobTot = document.getElementById('mobileTotalCount');
 
-            var cardClasses = 'choice-card flex items-start gap-3 p-3 sm:p-4 rounded-xl border border-slate-200 bg-white cursor-pointer';
-            var badgeHtml = '';
+            if (pCount) pCount.textContent = String(answered);
+            if (pTotal) pTotal.textContent = '/ ' + total;
+            if (omrBadge) omrBadge.textContent = 'ตอบแล้ว ' + answered + '/' + total;
+            if (mobAns) mobAns.textContent = String(answered);
+            if (mobTot) mobTot.textContent = String(total);
+        }
 
-            if (isSelected) {
-                cardClasses += ' selected';
-            }
+        function renderAll() {
+            updateProgressCounters();
+            updateSingleNavControls();
+            renderQuestions();
+            renderOMRSheet();
+        }
+
+        // ==========================================
+        // QUESTION CARD RENDERING (DESKTOP & SMARTPHONE RESPONSIVE)
+        // ==========================================
+        function buildChoiceItemHtml(q, choiceText, idx, showKey) {
+            var choiceNum = idx + 1;
+            var isSelected = q.type === 'multi2'
+                ? (Array.isArray(userAnswers[q.id]) && userAnswers[q.id].indexOf(choiceNum) !== -1)
+                : (userAnswers[q.id] === choiceNum);
+            var isCorrectOption = Array.isArray(q.correct) && q.correct.indexOf(choiceNum) !== -1;
+
+            var cardClasses = 'choice-card w-full text-left p-3 sm:p-3.5 rounded-xl border-2 flex items-start gap-3 transition ';
+            if (isSubmitted) cardClasses += 'disabled cursor-default ';
+            else cardClasses += 'cursor-pointer ';
+
             if (showKey) {
-                if (isCorrectChoice) {
-                    cardClasses += ' correct-choice';
-                    badgeHtml = '<span class="ml-auto shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-prompt font-semibold bg-emerald-100 text-emerald-800"><i class="ph-fill ph-check-circle"></i> คำตอบที่ถูกต้อง</span>';
-                } else if (isSelected && !isCorrectChoice) {
-                    cardClasses += ' wrong-choice';
-                    badgeHtml = '<span class="ml-auto shrink-0 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-prompt font-semibold bg-rose-100 text-rose-800"><i class="ph-fill ph-x-circle"></i> คำตอบที่เลือก</span>';
+                if (isCorrectOption) {
+                    cardClasses += 'correct-choice border-emerald-500 bg-emerald-50 ';
+                } else if (isSelected && !isCorrectOption) {
+                    cardClasses += 'wrong-choice border-rose-500 bg-rose-50 ';
+                } else {
+                    cardClasses += 'border-slate-200 bg-white opacity-75 ';
                 }
+            } else {
+                cardClasses += isSelected ? 'selected border-blue-600 bg-blue-50 ' : 'border-slate-200 bg-white ';
             }
 
-            var svgBlock = '';
-            if (q.choiceSvgs && q.choiceSvgs[cIdx]) {
-                svgBlock = '<div class="mt-2 p-2 bg-white rounded-lg border border-slate-200 inline-block">' + q.choiceSvgs[cIdx] + '</div>';
+            var badgeClass = isSelected
+                ? 'bg-blue-700 text-white border-blue-700'
+                : 'bg-slate-100 text-slate-700 border-slate-300';
+            if (showKey && isCorrectOption) badgeClass = 'bg-emerald-600 text-white border-emerald-600';
+            if (showKey && isSelected && !isCorrectOption) badgeClass = 'bg-rose-600 text-white border-rose-600';
+
+            var svgHtml = (Array.isArray(q.choiceSvgs) && q.choiceSvgs[idx])
+                ? ('<div class="mt-2 bg-white p-2 rounded-lg border border-slate-200 inline-block max-w-full overflow-x-auto">' + q.choiceSvgs[idx] + '</div>')
+                : '';
+
+            var statusTag = '';
+            if (showKey) {
+                if (isCorrectOption && isSelected) {
+                    statusTag = '<span class="ml-auto shrink-0 text-[11px] font-prompt font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">ตอบถูก</span>';
+                } else if (isCorrectOption) {
+                    statusTag = '<span class="ml-auto shrink-0 text-[11px] font-prompt font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">เฉลย</span>';
+                } else if (isSelected) {
+                    statusTag = '<span class="ml-auto shrink-0 text-[11px] font-prompt font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">ตอบผิด</span>';
+                }
             }
 
             return (
-                '<div onclick="selectAnswer(' + q.id + ', ' + cNum + ')" class="' + cardClasses + '">' +
-                    '<div class="omr-bubble ' + (isSelected ? 'filled' : '') + ' mt-0.5">' + cNum + '</div>' +
-                    '<div class="flex-1 text-base sm:text-lg text-slate-900 leading-relaxed">' +
-                        '<div>' + choiceText + '</div>' +
-                        svgBlock +
+                '<button type="button" onclick="selectAnswer(' + q.id + ', ' + choiceNum + ')" class="' + cardClasses + '">' +
+                    '<span class="w-7 h-7 rounded-full border-2 flex items-center justify-center font-prompt font-bold text-xs shrink-0 mt-0.5 ' + badgeClass + '">' + choiceNum + '</span>' +
+                    '<div class="flex-1 min-w-0">' +
+                        '<div class="flex items-start gap-2">' +
+                            '<span class="text-sm sm:text-base text-slate-800 leading-relaxed break-words">' + choiceText + '</span>' +
+                            statusTag +
+                        '</div>' +
+                        svgHtml +
                     '</div>' +
-                    badgeHtml +
-                '</div>'
+                '</button>'
             );
         }
 
-        function buildComplexYesNoHtml(q) {
+        function buildComplexYesNoHtml(q, showKey) {
             var ansObj = (userAnswers[q.id] && typeof userAnswers[q.id] === 'object') ? userAnswers[q.id] : {};
-            var showKey = isSubmitted || practiceRevealed.has(q.id);
-            var desktopRowsHtml = '';
-            var mobileCardsHtml = '';
+            var desktopRows = '';
+            var mobileCards = '';
 
             (q.subQuestions || []).forEach(function(sq) {
-                var userVal = ansObj[sq.subId];
-                var btn1Class = userVal === 1
-                    ? 'bg-blue-700 text-white border-blue-800 font-bold shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50';
-                var btn2Class = userVal === 2
-                    ? 'bg-blue-700 text-white border-blue-800 font-bold shadow-sm'
-                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50';
+                var chosen = ansObj[sq.subId] || null;
+                var isRight = chosen === sq.correct;
+
+                var yesClass = 'px-3.5 py-1.5 rounded-lg border-2 font-prompt text-xs font-bold transition ';
+                var noClass = 'px-3.5 py-1.5 rounded-lg border-2 font-prompt text-xs font-bold transition ';
+
+                if (showKey) {
+                    yesClass += (sq.correct === 1) ? 'bg-emerald-600 text-white border-emerald-600' : (chosen === 1 ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-400 border-slate-200');
+                    noClass += (sq.correct === 2) ? 'bg-emerald-600 text-white border-emerald-600' : (chosen === 2 ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-400 border-slate-200');
+                } else {
+                    yesClass += (chosen === 1) ? 'bg-blue-700 text-white border-blue-700 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:border-blue-500';
+                    noClass += (chosen === 2) ? 'bg-blue-700 text-white border-blue-700 shadow-sm' : 'bg-white text-slate-700 border-slate-300 hover:border-blue-500';
+                }
 
                 var keyBadge = '';
                 if (showKey) {
-                    var isSubCorrect = userVal === sq.correct;
-                    var corrLabel = sq.correct === 1 ? 'ใช่ (ระบาย ①)' : 'ไม่ใช่ (ระบาย ②)';
-                    keyBadge = isSubCorrect
-                        ? '<div class="mt-1.5 text-xs font-prompt font-bold text-emerald-700"><i class="ph-fill ph-check-circle"></i> ตอบถูก (เฉลย: ' + corrLabel + ')</div>'
-                        : '<div class="mt-1.5 text-xs font-prompt font-bold text-rose-700"><i class="ph-fill ph-x-circle"></i> เฉลย: ' + corrLabel + '</div>';
+                    var labelKey = sq.correct === 1 ? 'เฉลย: ใช่ (1)' : 'เฉลย: ไม่ใช่ (2)';
+                    keyBadge = isRight
+                        ? '<span class="inline-block mt-1 text-[11px] font-prompt font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">✓ ถูกต้อง (' + labelKey + ')</span>'
+                        : '<span class="inline-block mt-1 text-[11px] font-prompt font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">✗ ' + labelKey + '</span>';
                 }
 
-                // 1) Desktop Table Row
-                desktopRowsHtml +=
-                    '<tr>' +
-                        '<td class="text-left text-base sm:text-lg text-slate-900 leading-relaxed">' +
-                            sq.text +
+                // Desktop Table Row
+                desktopRows +=
+                    '<tr class="border-b border-slate-200">' +
+                        '<td class="py-3 px-3.5 text-sm text-slate-800 leading-relaxed">' +
+                            '<div>' + sq.text + '</div>' +
                             keyBadge +
                         '</td>' +
-                        '<td class="text-center w-48">' +
-                            '<div class="inline-flex items-center gap-2 font-prompt text-sm">' +
-                                '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 1)" class="px-3.5 py-1.5 rounded-lg border transition flex items-center gap-1.5 ' + btn1Class + '">' +
-                                    '<span class="w-5 h-5 rounded-full border border-current inline-flex items-center justify-center text-xs">1</span> ใช่' +
-                                '</button>' +
-                                '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 2)" class="px-3.5 py-1.5 rounded-lg border transition flex items-center gap-1.5 ' + btn2Class + '">' +
-                                    '<span class="w-5 h-5 rounded-full border border-current inline-flex items-center justify-center text-xs">2</span> ไม่ใช่' +
-                                '</button>' +
+                        '<td class="py-3 px-3 text-center whitespace-nowrap align-middle">' +
+                            '<div class="inline-flex items-center gap-2">' +
+                                '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 1)" class="' + yesClass + '">1 ใช่</button>' +
+                                '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 2)" class="' + noClass + '">2 ไม่ใช่</button>' +
                             '</div>' +
-                        '</td >' +
+                        '</td>' +
                     '</tr>';
 
-                // 2) Smartphone Stacked Card (No squishing or overlapping)
-                mobileCardsHtml +=
-                    '<div class="p-3.5 rounded-xl border-2 border-slate-200 bg-slate-50/60 space-y-3">' +
-                        '<div class="text-base text-slate-900 leading-relaxed font-medium">' +
-                            sq.text +
-                            keyBadge +
-                        '</div>' +
-                        '<div class="grid grid-cols-2 gap-2.5 font-prompt text-sm">' +
-                            '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 1)" class="py-2 px-3 rounded-xl border transition flex items-center justify-center gap-2 ' + btn1Class + '">' +
-                                '<span class="w-5 h-5 rounded-full border border-current inline-flex items-center justify-center text-xs">1</span> <span>ใช่</span>' +
-                            '</button>' +
-                            '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 2)" class="py-2 px-3 rounded-xl border transition flex items-center justify-center gap-2 ' + btn2Class + '">' +
-                                '<span class="w-5 h-5 rounded-full border border-current inline-flex items-center justify-center text-xs">2</span> <span>ไม่ใช่</span>' +
-                            '</button>' +
+                // Smartphone Stacked Card
+                mobileCards +=
+                    '<div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 space-y-2.5">' +
+                        '<div class="text-sm text-slate-800 leading-relaxed font-medium">' + sq.text + '</div>' +
+                        keyBadge +
+                        '<div class="grid grid-cols-2 gap-2 pt-1">' +
+                            '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 1)" class="w-full py-2.5 ' + yesClass + '">1 ใช่</button>' +
+                            '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 2)" class="w-full py-2.5 ' + noClass + '">2 ไม่ใช่</button>' +
                         '</div>' +
                     '</div>';
             });
 
             return (
-                '<div class="my-3">' +
-                    '<!-- Desktop Table System -->' +
-                    '<div class="hidden sm:block overflow-x-auto">' +
-                        '<table class="exam-table">' +
-                            '<thead>' +
-                                '<tr>' +
-                                    '<th class="text-center">ข้อความ</th>' +
-                                    '<th class="text-center w-48">ใช่ หรือ ไม่ใช่</th>' +
-                                '</tr>' +
-                            '</thead>' +
-                            '<tbody>' + desktopRowsHtml + '</tbody>' +
-                        '</table>' +
-                    '</div>' +
-                    '<!-- Smartphone Stacked System -->' +
-                    '<div class="sm:hidden space-y-3">' +
-                        mobileCardsHtml +
-                    '</div>' +
-                '</div>'
+                '<div class="hidden sm:block rounded-xl border border-slate-300 overflow-hidden bg-white">' +
+                    '<table class="w-full text-left">' +
+                        '<thead class="bg-slate-100 border-b border-slate-300 font-prompt text-xs text-slate-700">' +
+                            '<tr>' +
+                                '<th class="py-2.5 px-3.5">ข้อความ (คำถามย่อย)</th>' +
+                                '<th class="py-2.5 px-3 text-center w-44">ใช่ (1) / ไม่ใช่ (2)</th>' +
+                            '</tr>' +
+                        '</thead>' +
+                        '<tbody>' + desktopRows + '</tbody>' +
+                    '</table>' +
+                '</div>' +
+                '<div class="sm:hidden space-y-2.5">' + mobileCards + '</div>'
             );
         }
 
-        function buildQuestionCardHTML(q, idx) {
+        function buildQuestionCardHTML(q) {
             var meta = EXAM_METADATA[currentExamYear];
-            var showExplanation = isSubmitted || practiceRevealed.has(q.id);
+            var showKey = isSubmitted || (examMode === 'practice' && practiceRevealed.has(q.id));
+            var isBookmarked = bookmarkedQuestions.has(q.id);
 
-            var part1MaxQ = meta.part1Count || 30;
-            var part1Pts = meta.part1PointsEach || 3;
-            var part1Total = meta.part1TotalPoints || 90;
+            var partBadge = q.part === 1
+                ? '<span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 font-prompt font-semibold text-[11px]">ตอนที่ 1 • ' + q.points + ' คะแนน</span>'
+                : '<span class="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-300 font-prompt font-semibold text-[11px]">ตอนที่ 2 • ' + q.points + ' คะแนน</span>';
 
-            var sectionBanner = '';
-            if (q.id === 1) {
-                sectionBanner =
-                    '<div class="mb-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200 font-prompt text-xs sm:text-sm text-slate-800 flex items-center justify-between flex-wrap gap-2">' +
-                        '<div>' +
-                            '<p class="font-bold">ตอนที่ 1 : แบบปรนัย 4 ตัวเลือก เลือก 1 คำตอบที่ถูกที่สุด</p>' +
-                            '<p class="text-slate-600 text-xs">จำนวน ' + part1MaxQ + ' ข้อ (ข้อ 1 - ' + part1MaxQ + ') ข้อละ ' + part1Pts + ' คะแนน รวม ' + part1Total + ' คะแนน</p>' +
-                        '</div>' +
-                    '</div>';
-            } else if (q.part === 2 && idx > 0 && QUESTIONS[idx - 1].part === 1) {
-                sectionBanner =
-                    '<div class="mb-4 p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 font-prompt text-xs sm:text-sm text-amber-950">' +
-                        '<p class="font-bold">' + meta.part2InstructionTitle + '</p>' +
-                        '<p class="text-amber-800 text-xs">' + meta.part2InstructionSub + '</p>' +
-                    '</div>';
+            var scorePill = '';
+            if (isSubmitted) {
+                var earned = getQuestionScore(q);
+                var scColor = earned === q.points
+                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                    : (earned > 0 ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-rose-100 text-rose-800 border-rose-300');
+                scorePill = '<span class="px-2.5 py-0.5 rounded-full border font-prompt font-bold text-xs ' + scColor + '">ได้ ' + earned + ' / ' + q.points + ' คะแนน</span>';
             }
 
-            var choicesSectionHtml = '';
+            var promptFormatted = String(q.prompt || '').replace(/\n/g, '<br>');
+            var svgSection = q.svg
+                ? '<div class="my-4 p-3 rounded-xl bg-white border border-slate-200 overflow-x-auto">' + q.svg + '</div>'
+                : '';
+            var tableSection = q.tableHtml
+                ? '<div class="my-4 table-scroll-wrap">' + q.tableHtml + '</div>'
+                : '';
+
+            var interactionHtml = '';
             if (q.type === 'complexYesNo') {
-                choicesSectionHtml = buildComplexYesNoHtml(q);
+                interactionHtml = buildComplexYesNoHtml(q, showKey);
             } else {
-                var isGridChoices = q.choiceSvgs && q.choiceSvgs.length > 0;
-                var itemsHtml = q.choices.map(function(cText, cIdx) {
-                    return buildChoiceItemHtml(q, cIdx, cText);
+                var gridCls = (Array.isArray(q.choiceSvgs) && q.choiceSvgs.length > 0)
+                    ? 'grid grid-cols-1 sm:grid-cols-2 gap-3'
+                    : 'space-y-2.5';
+                var multiHint = q.type === 'multi2'
+                    ? '<p class="text-xs font-prompt font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg mb-2.5">คำชี้แจง: ข้อนี้ให้เลือกคำตอบที่ถูกต้องจำนวน 2 ตัวเลือก</p>'
+                    : '';
+                var choicesHtml = (q.choices || []).map(function(cText, idx) {
+                    return buildChoiceItemHtml(q, cText, idx, showKey);
                 }).join('');
-                choicesSectionHtml =
-                    '<div class="' + (isGridChoices ? 'grid grid-cols-1 sm:grid-cols-2 gap-3' : 'space-y-2.5') + ' mt-4">' +
-                        itemsHtml +
-                    '</div>';
+                interactionHtml = multiHint + '<div class="' + gridCls + '">' + choicesHtml + '</div>';
             }
 
-            // Practice Mode Check Answer Action Bar
-            var practiceActionBarHtml = '';
-            if (!isSubmitted && examMode === 'practice') {
-                var isRevealed = practiceRevealed.has(q.id);
-                practiceActionBarHtml =
-                    '<div class="mt-5 pt-4 border-t border-slate-200 flex items-center justify-between flex-wrap gap-3">' +
-                        '<button type="button" onclick="togglePracticeExplanation(' + q.id + ')" class="px-4 py-2 rounded-lg font-prompt text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition ' +
-                        (isRevealed ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100') + '">' +
-                            '<i class="ph-bold ' + (isRevealed ? 'ph-eye-slash' : 'ph-check-circle') + '"></i>' +
-                            '<span>' + (isRevealed ? 'ซ่อนเฉลยและคำอธิบาย' : 'ตรวจคำตอบและดูคำอธิบายข้อนี้') + '</span>' +
+            var practiceBtnHtml = '';
+            if (examMode === 'practice' && !isSubmitted) {
+                var isRev = practiceRevealed.has(q.id);
+                practiceBtnHtml =
+                    '<div class="pt-3 border-t border-slate-100 flex justify-end">' +
+                        '<button type="button" onclick="togglePracticeExplanation(' + q.id + ')" class="px-3.5 py-1.5 rounded-lg font-prompt text-xs font-semibold flex items-center gap-1.5 transition ' +
+                            (isRev ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : 'bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100') + '">' +
+                            '<i class="ph-bold ' + (isRev ? 'ph-eye-slash' : 'ph-lightbulb') + '"></i>' +
+                            '<span>' + (isRev ? 'ซ่อนคำเฉลยและคำอธิบาย' : 'ตรวจคำตอบและดูคำอธิบายข้อนี้') + '</span>' +
                         '</button>' +
                     '</div>';
             }
 
             var explanationHtml = '';
-            if (showExplanation) {
-                var earned = getQuestionScore(q);
-                var statusBadge = earned === q.points
-                    ? '<span class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">ตอบถูกต้อง (+' + earned + ' / ' + q.points + ' คะแนน)</span>'
-                    : (earned > 0
-                        ? '<span class="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800">ได้คะแนนบางส่วน (+' + earned + ' / ' + q.points + ' คะแนน)</span>'
-                        : '<span class="px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800">ได้ 0 / ' + q.points + ' คะแนน</span>');
-
-                var freeNoteHtml = q.freePointNote
-                    ? '<div class="mb-2 p-2.5 rounded-lg bg-amber-100/80 border border-amber-300 text-amber-950 text-xs font-prompt font-semibold">' + q.freePointNote + '</div>'
+            if (showKey) {
+                var freeNote = q.freePointNote
+                    ? '<p class="text-xs font-prompt font-semibold text-amber-900 bg-amber-100/80 p-2.5 rounded-lg mb-2">' + q.freePointNote + '</p>'
                     : '';
-
                 explanationHtml =
-                    '<div class="mt-4 p-4 sm:p-5 rounded-xl bg-emerald-50/80 border border-emerald-200 font-prompt text-sm text-slate-800 space-y-2">' +
-                        '<div class="flex items-center justify-between flex-wrap gap-2">' +
-                            '<span class="font-bold text-emerald-950 flex items-center gap-1.5"><i class="ph-fill ph-book-open-text text-emerald-700 text-lg"></i> เฉลยและคำอธิบายละเอียด</span>' +
-                            statusBadge +
+                    '<div class="mt-4 p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 space-y-1.5">' +
+                        '<div class="font-prompt font-bold text-xs sm:text-sm text-emerald-900 flex items-center gap-1.5">' +
+                            '<i class="ph-fill ph-book-open-text text-emerald-700 text-base"></i>' +
+                            '<span>เฉลยและคำอธิบายละเอียด</span>' +
                         '</div>' +
-                        freeNoteHtml +
-                        '<p class="leading-relaxed whitespace-pre-line text-slate-700">' + q.explanation + '</p>' +
+                        freeNote +
+                        '<p class="text-xs sm:text-sm text-slate-700 leading-relaxed">' + String(q.explanation || '').replace(/\n/g, '<br>') + '</p>' +
                     '</div>';
             }
 
             return (
-                '<article id="question-card-' + q.id + '" class="paper-sheet rounded-2xl p-5 sm:p-7 border border-slate-200">' +
-                    '<div class="flex items-center justify-between text-xs text-slate-500 border-b border-slate-200 pb-2.5 mb-4 font-prompt flex-wrap gap-2">' +
-                        '<div class="flex items-center gap-2">' +
-                            '<span class="px-2.5 py-0.5 rounded-md bg-blue-900 text-white font-semibold">ข้อที่ ' + q.id + '</span>' +
-                            '<span>รหัสวิชา 65 วิทยาศาสตร์ &bull; ' + meta.headerDateText + '</span>' +
+                '<article id="questionCard_' + q.id + '" class="paper-sheet rounded-2xl border border-slate-200 overflow-hidden">' +
+                    '<!-- Official Exam Paper Header Strip -->' +
+                    '<div class="px-4 sm:px-6 py-2.5 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] font-prompt text-slate-500">' +
+                        '<div class="flex items-center gap-2 flex-wrap">' +
+                            '<span class="font-bold text-slate-700">รหัสวิชา 65 วิทยาศาสตร์ (ปีการศึกษา ' + meta.year + ' • ชุด ' + currentSetCode + ')</span>' +
+                            '<span class="hidden sm:inline">• ' + meta.headerDateText + '</span>' +
                         '</div>' +
                         '<div class="flex items-center gap-2">' +
-                            '<span>หน้า ' + q.page + '</span>' +
-                            '<span class="px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200">' + q.points + ' คะแนน</span>' +
+                            partBadge +
+                            scorePill +
+                            '<button type="button" onclick="toggleBookmark(' + q.id + ')" class="p-1 rounded hover:bg-slate-200/70 transition" title="ทำเครื่องหมายทบทวน">' +
+                                '<i class="' + (isBookmarked ? 'ph-fill text-amber-500' : 'ph-bold text-slate-400') + ' ph-bookmark-simple text-base"></i>' +
+                            '</button>' +
                         '</div>' +
                     '</div>' +
-                    sectionBanner +
-                    '<div class="space-y-3">' +
-                        '<div class="flex items-start gap-3">' +
-                            '<span class="shrink-0 w-8 h-8 rounded-lg bg-slate-800 text-white font-prompt font-bold text-sm flex items-center justify-center mt-0.5">' + q.id + '.</span>' +
-                            '<div class="flex-1 text-base sm:text-lg text-slate-900 leading-relaxed whitespace-pre-line">' + q.prompt + '</div>' +
+
+                    '<!-- Question Body -->' +
+                    '<div class="p-4 sm:p-6 space-y-4">' +
+                        '<div class="flex items-start gap-2.5">' +
+                            '<span class="font-prompt font-bold text-base sm:text-lg text-blue-900 shrink-0">' + q.id + '.</span>' +
+                            '<div class="flex-1 min-w-0 space-y-3">' +
+                                '<p class="text-sm sm:text-base text-slate-800 leading-relaxed">' + promptFormatted + '</p>' +
+                                svgSection +
+                                tableSection +
+                                '<p class="text-sm sm:text-base font-bold text-slate-900 leading-relaxed pt-1">' + q.questionText + '</p>' +
+                            '</div>' +
                         '</div>' +
-                        (q.svg ? '<div class="my-3 p-3 bg-white rounded-xl border border-slate-200">' + q.svg + '</div>' : '') +
-                        (q.tableHtml ? '<div class="my-3 overflow-x-auto">' + q.tableHtml + '</div>' : '') +
-                        '<p class="font-bold text-base sm:text-lg text-slate-900 pt-1">' + q.questionText + '</p>' +
+                        '<div class="pt-1">' + interactionHtml + '</div>' +
+                        practiceBtnHtml +
+                        explanationHtml +
                     '</div>' +
-                    choicesSectionHtml +
-                    practiceActionBarHtml +
-                    explanationHtml +
                 '</article>'
             );
         }
 
         function renderQuestions() {
             var container = document.getElementById('questionsContainer');
-            if (!container) return;
+            if (!container || !QUESTIONS || QUESTIONS.length === 0) return;
 
             if (viewMode === 'single') {
-                var q = QUESTIONS[currentQuestionIndex];
-                container.innerHTML = q ? buildQuestionCardHTML(q, currentQuestionIndex) : '';
-
-                var jumpSel = document.getElementById('questionJumpSelect');
-                if (jumpSel) {
-                    jumpSel.innerHTML = QUESTIONS.map(function(item, i) {
-                        var statusMark = isQuestionAnswered(item) ? ' ✓' : (isQuestionPartiallyAnswered(item) ? ' ◐' : '');
-                        var bmMark = bookmarkedQuestions.has(item.id) ? ' ★' : '';
-                        return '<option value="' + i + '" ' + (i === currentQuestionIndex ? 'selected' : '') + '>ข้อที่ ' + item.id + ' (ตอนที่ ' + item.part + ')' + statusMark + bmMark + '</option>';
-                    }).join('');
-                }
-
-                var bmBtn = document.getElementById('bookmarkBtn');
-                var bmLabel = document.getElementById('bookmarkTextLabel');
-                if (bmBtn && q) {
-                    var isBm = bookmarkedQuestions.has(q.id);
-                    bmBtn.className = isBm
-                        ? 'px-3 py-1.5 rounded-lg border border-amber-400 bg-amber-50 text-amber-800 font-prompt text-xs font-bold flex items-center gap-1.5 transition'
-                        : 'px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-600 font-prompt text-xs font-medium flex items-center gap-1.5 transition';
-                    if (bmLabel) bmLabel.textContent = isBm ? 'ทำเครื่องหมายทบทวนแล้ว' : 'ทำเครื่องหมายทบทวน';
-                }
-
-                var prevBtn = document.getElementById('prevQuestionBtn');
-                var nextBtn = document.getElementById('nextQuestionBtn');
-                if (prevBtn) prevBtn.disabled = currentQuestionIndex === 0;
-                if (nextBtn) nextBtn.disabled = currentQuestionIndex === QUESTIONS.length - 1;
+                var q = QUESTIONS[currentQuestionIndex] || QUESTIONS[0];
+                container.innerHTML = buildQuestionCardHTML(q);
             } else {
-                container.innerHTML = QUESTIONS.map(function(q, i) {
-                    return buildQuestionCardHTML(q, i);
-                }).join('');
+                var meta = EXAM_METADATA[currentExamYear];
+                var htmlParts = [];
+                var part2BannerInserted = false;
+
+                QUESTIONS.forEach(function(q) {
+                    if (q.part === 2 && !part2BannerInserted) {
+                        part2BannerInserted = true;
+                        htmlParts.push(
+                            '<div class="p-4 rounded-xl bg-amber-50 border-2 border-amber-300 font-prompt">' +
+                                '<h3 class="font-bold text-sm sm:text-base text-amber-950">' + meta.part2InstructionTitle + '</h3>' +
+                                '<p class="text-xs text-amber-900 mt-0.5">' + meta.part2InstructionSub + '</p>' +
+                            '</div>'
+                        );
+                    }
+                    htmlParts.push(buildQuestionCardHTML(q));
+                });
+                container.innerHTML = htmlParts.join('');
             }
         }
 
+        // ==========================================
+        // 2B OMR ANSWER SHEET RENDERING
+        // ==========================================
         function buildOMRBubblesHtml(q) {
-            var count = q.type === 'multi2' ? 6 : 4;
-            var selectedArr = Array.isArray(userAnswers[q.id]) ? userAnswers[q.id] : [];
+            var ans = userAnswers[q.id];
             var html = '';
-            for (var c = 1; c <= count; c++) {
-                var isFilled = selectedArr.indexOf(c) !== -1;
-                var extraClass = '';
+            var maxChoice = q.type === 'multi2' ? 6 : 4;
+
+            for (var n = 1; n <= maxChoice; n++) {
+                var isFilled = q.type === 'multi2'
+                    ? (Array.isArray(ans) && ans.indexOf(n) !== -1)
+                    : (ans === n);
+                var extraCls = isFilled ? 'filled ' : '';
                 if (isSubmitted) {
-                    var isCorr = q.correct.indexOf(c) !== -1;
-                    if (isCorr) extraClass = ' correct-mark';
-                    else if (isFilled && !isCorr) extraClass = ' wrong-mark';
+                    extraCls += 'disabled ';
+                    var isCorrect = Array.isArray(q.correct) && q.correct.indexOf(n) !== -1;
+                    if (isCorrect) extraCls += 'correct-mark ';
+                    else if (isFilled && !isCorrect) extraCls += 'wrong-mark ';
                 }
-                html +=
-                    '<button type="button" onclick="selectAnswer(' + q.id + ', ' + c + ')" class="omr-bubble ' +
-                    (isFilled ? 'filled' : '') + extraClass + '" style="width:24px;height:24px;font-size:11px;">' +
-                    c + '</button>';
+                html += '<button type="button" onclick="selectAnswer(' + q.id + ', ' + n + ')" class="omr-bubble ' + extraCls + '">' + n + '</button>';
             }
             return html;
         }
 
         function renderOMRSheet() {
-            var part1Grid = document.getElementById('omrPart1Grid');
-            var part2List = document.getElementById('omrPart2List');
-            if (!part1Grid || !part2List) return;
+            updateSetCodeUI();
+            var p1Grid = document.getElementById('omrPart1Grid');
+            var p2List = document.getElementById('omrPart2List');
+            if (!p1Grid || !p2List) return;
 
-            var part1Html = '';
-            var part2Html = '';
+            var p1Html = '';
+            var p2Html = '';
 
-            for (var i = 0; i < QUESTIONS.length; i++) {
-                var q = QUESTIONS[i];
+            QUESTIONS.forEach(function(q, idx) {
+                var isActive = (viewMode === 'single' && idx === currentQuestionIndex);
+                var isBm = bookmarkedQuestions.has(q.id);
+                var rowHighlight = isActive ? 'bg-orange-200/70 ring-1 ring-orange-400' : 'hover:bg-orange-100/50';
+
                 if (q.part === 1) {
-                    var isCurr = viewMode === 'single' && currentQuestionIndex === i;
-                    var isBm = bookmarkedQuestions.has(q.id);
-                    part1Html +=
-                        '<div class="flex items-center justify-between px-2 py-1 rounded-lg border ' +
-                        (isCurr ? 'bg-blue-50 border-blue-300' : 'bg-white border-orange-200/80') + '">' +
-                            '<button type="button" onclick="jumpToQuestion(' + i + ')" class="font-prompt font-bold text-xs text-left w-8 flex items-center gap-0.5 ' +
-                            (isCurr ? 'text-blue-700' : 'text-slate-700 hover:text-blue-600') + '">' +
-                                q.id + (isBm ? '<span class="text-amber-500">★</span>' : '') +
+                    p1Html +=
+                        '<div class="flex items-center justify-between gap-1 px-1.5 py-1 rounded-lg transition ' + rowHighlight + '">' +
+                            '<button type="button" onclick="jumpToQuestion(' + idx + ')" class="w-7 text-left font-prompt font-bold text-xs text-orange-950 hover:underline flex items-center gap-0.5 shrink-0">' +
+                                '<span>' + q.id + '</span>' +
+                                (isBm ? '<span class="text-amber-600 text-[10px]">★</span>' : '') +
                             '</button>' +
-                            '<div class="flex items-center gap-1">' +
-                                buildOMRBubblesHtml(q) +
-                            '</div>' +
+                            '<div class="flex items-center gap-1">' + buildOMRBubblesHtml(q) + '</div>' +
                         '</div>';
                 } else {
-                    var isCurr2 = viewMode === 'single' && currentQuestionIndex === i;
-                    if (q.type === 'complexYesNo') {
+                    if (q.type === 'multi2') {
+                        p2Html +=
+                            '<div class="p-2 rounded-lg border border-orange-200 bg-white/80 ' + (isActive ? 'ring-2 ring-orange-400' : '') + '">' +
+                                '<div class="flex items-center justify-between gap-2">' +
+                                    '<button type="button" onclick="jumpToQuestion(' + idx + ')" class="font-prompt font-bold text-xs text-orange-950 hover:underline">' +
+                                        'ข้อ ' + q.id + (isBm ? ' ★' : '') +
+                                    '</button>' +
+                                    '<div class="flex items-center gap-1">' + buildOMRBubblesHtml(q) + '</div>' +
+                                '</div>' +
+                            '</div>';
+                    } else {
                         var ansObj = (userAnswers[q.id] && typeof userAnswers[q.id] === 'object') ? userAnswers[q.id] : {};
-                        var subRows = (q.subQuestions || []).map(function(sq) {
-                            var uVal = ansObj[sq.subId];
-                            var b1Extra = '';
-                            var b2Extra = '';
-                            if (isSubmitted) {
-                                if (sq.correct === 1) b1Extra = ' correct-mark';
-                                else if (uVal === 1) b1Extra = ' wrong-mark';
-                                if (sq.correct === 2) b2Extra = ' correct-mark';
-                                else if (uVal === 2) b2Extra = ' wrong-mark';
-                            }
+                        var subRowsHtml = (q.subQuestions || []).map(function(sq) {
+                            var chosen = ansObj[sq.subId] || null;
+                            var b1Cls = (chosen === 1 ? 'filled ' : '') + (isSubmitted ? ('disabled ' + (sq.correct === 1 ? 'correct-mark ' : (chosen === 1 ? 'wrong-mark ' : ''))) : '');
+                            var b2Cls = (chosen === 2 ? 'filled ' : '') + (isSubmitted ? ('disabled ' + (sq.correct === 2 ? 'correct-mark ' : (chosen === 2 ? 'wrong-mark ' : ''))) : '');
                             return (
-                                '<div class="flex items-center justify-between py-1 px-2 border-t border-orange-100 text-xs font-prompt">' +
-                                    '<span class="font-bold text-slate-700">' + sq.subId + '</span>' +
-                                    '<div class="flex items-center gap-3">' +
-                                        '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 1)" class="inline-flex items-center gap-1 text-[11px] text-slate-700">' +
-                                            '<span class="omr-bubble ' + (uVal === 1 ? 'filled' : '') + b1Extra + '" style="width:22px;height:22px;font-size:11px;">1</span> ใช่' +
-                                        '</button>' +
-                                        '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 2)" class="inline-flex items-center gap-1 text-[11px] text-slate-700">' +
-                                            '<span class="omr-bubble ' + (uVal === 2 ? 'filled' : '') + b2Extra + '" style="width:22px;height:22px;font-size:11px;">2</span> ไม่ใช่' +
-                                        '</button>' +
+                                '<div class="flex items-center justify-between py-1 border-t border-orange-100 first:border-t-0">' +
+                                    '<span class="font-prompt font-semibold text-xs text-orange-900">' + sq.subId + '</span>' +
+                                    '<div class="flex items-center gap-2">' +
+                                        '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 1)" class="omr-bubble ' + b1Cls + '" title="ใช่">1</button>' +
+                                        '<button type="button" onclick="selectSubAnswer(' + q.id + ', \'' + sq.subId + '\', 2)" class="omr-bubble ' + b2Cls + '" title="ไม่ใช่">2</button>' +
                                     '</div>' +
                                 '</div>'
                             );
                         }).join('');
 
-                        part2Html +=
-                            '<div class="rounded-lg border ' + (isCurr2 ? 'bg-blue-50 border-blue-300' : 'bg-white border-orange-200') + ' overflow-hidden">' +
-                                '<div class="px-2.5 py-1.5 bg-orange-100/60 flex items-center justify-between">' +
-                                    '<button type="button" onclick="jumpToQuestion(' + i + ')" class="font-prompt font-bold text-xs text-orange-950 hover:text-blue-700">ข้อ ' + q.id + ' (3 คำถามย่อย)</button>' +
-                                    '<span class="text-[10px] font-prompt text-orange-800">' + q.points + ' คะแนน</span>' +
+                        p2Html +=
+                            '<div class="p-2.5 rounded-lg border border-orange-200 bg-white/80 ' + (isActive ? 'ring-2 ring-orange-400' : '') + '">' +
+                                '<div class="flex items-center justify-between mb-1">' +
+                                    '<button type="button" onclick="jumpToQuestion(' + idx + ')" class="font-prompt font-bold text-xs text-orange-950 hover:underline">' +
+                                        'ข้อ ' + q.id + (isBm ? ' ★' : '') +
+                                    '</button>' +
+                                    '<div class="flex items-center gap-3 text-[10px] font-prompt font-semibold text-orange-800 pr-1">' +
+                                        '<span>ใช่ (1)</span><span>ไม่ใช่ (2)</span>' +
+                                    '</div>' +
                                 '</div>' +
-                                subRows +
-                            '</div>';
-                    } else {
-                        part2Html +=
-                            '<div class="flex items-center justify-between px-2.5 py-2 rounded-lg border ' +
-                            (isCurr2 ? 'bg-blue-50 border-blue-300' : 'bg-white border-orange-200') + '">' +
-                                '<button type="button" onclick="jumpToQuestion(' + i + ')" class="font-prompt font-bold text-xs text-slate-700 hover:text-blue-600">ข้อ ' + q.id + '</button>' +
-                                '<div class="flex items-center gap-1">' +
-                                    buildOMRBubblesHtml(q) +
-                                '</div>' +
+                                subRowsHtml +
                             '</div>';
                     }
                 }
-            }
-
-            part1Grid.innerHTML = part1Html;
-            part2List.innerHTML = part2Html;
-        }
-
-        function updateProgressCounters() {
-            var count = 0;
-            var totalQ = QUESTIONS.length;
-            QUESTIONS.forEach(function(q) {
-                if (isQuestionAnswered(q)) count++;
             });
-            var pCount = document.getElementById('progressCountText');
-            var pTotal = document.getElementById('progressTotalText');
-            var mCount = document.getElementById('mobileAnsweredCount');
-            var mTotal = document.getElementById('mobileTotalCount');
-            var oCount = document.getElementById('omrAnsweredBadge');
-            if (pCount) pCount.textContent = count;
-            if (pTotal) pTotal.textContent = '/ ' + totalQ;
-            if (mCount) mCount.textContent = count;
-            if (mTotal) mTotal.textContent = totalQ;
-            if (oCount) oCount.textContent = 'ตอบแล้ว ' + count + '/' + totalQ;
+
+            p1Grid.innerHTML = p1Html;
+            p2List.innerHTML = p2Html;
         }
 
-        function renderAll() {
-            renderQuestions();
-            renderOMRSheet();
-            updateProgressCounters();
-        }
-
-        function toggleMobileOMR(open) {
-            var sheet = document.getElementById('omrSidebar');
+        function toggleMobileOMR(show) {
+            var sidebar = document.getElementById('omrSidebar');
             var backdrop = document.getElementById('mobileOmrBackdrop');
-            if (!sheet || !backdrop) return;
-            if (open) {
-                sheet.classList.add('open');
+            if (!sidebar || !backdrop) return;
+            if (show) {
+                sidebar.classList.add('open');
                 backdrop.classList.remove('hidden');
             } else {
-                sheet.classList.remove('open');
+                sidebar.classList.remove('open');
                 backdrop.classList.add('hidden');
             }
         }
 
-        function updateSubmitButtonsState(submitted) {
-            var topBtn = document.getElementById('submitExamBtn');
-            var bottomBtn = document.getElementById('bottomSubmitExamBtn');
-            var omrBtn = document.getElementById('omrSubmitExamBtn');
-            var confirmBtn = document.getElementById('confirmSubmitExamBtn');
-
-            if (submitted) {
-                if (topBtn) {
-                    topBtn.disabled = true;
-                    topBtn.className = 'bg-slate-300 text-slate-500 cursor-not-allowed font-prompt font-semibold text-xs sm:text-sm px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition border border-slate-300';
-                    topBtn.innerHTML = '<i class="ph-bold ph-check-circle text-base"></i><span>ส่งกระดาษคำตอบแล้ว</span>';
-                }
-                if (bottomBtn) {
-                    bottomBtn.disabled = true;
-                    bottomBtn.className = 'px-4 py-2 rounded-lg bg-slate-300 text-slate-500 cursor-not-allowed font-prompt text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition border border-slate-300';
-                    bottomBtn.innerHTML = '<i class="ph-bold ph-check-circle"></i><span>ส่งกระดาษคำตอบแล้ว</span>';
-                }
-                if (omrBtn) {
-                    omrBtn.disabled = true;
-                    omrBtn.className = 'w-full py-2.5 rounded-xl bg-slate-300 text-slate-500 cursor-not-allowed font-prompt font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition border border-slate-300';
-                    omrBtn.innerHTML = '<i class="ph-bold ph-check-square-offset text-base"></i><span>ส่งกระดาษคำตอบแล้ว</span>';
-                }
-                if (confirmBtn) {
-                    confirmBtn.disabled = true;
-                    confirmBtn.className = 'px-5 py-2 rounded-xl bg-slate-300 text-slate-500 cursor-not-allowed font-semibold transition';
-                    confirmBtn.textContent = 'ส่งกระดาษคำตอบแล้ว';
-                }
+        // ==========================================
+        // GRADING, SUBMISSION & RESET MODALS
+        // ==========================================
+        function getQuestionScore(q) {
+            var ans = userAnswers[q.id];
+            if (q.type === 'multi2') {
+                if (!Array.isArray(ans) || ans.length === 0) return 0;
+                var hits = 0;
+                ans.forEach(function(choice) {
+                    if (Array.isArray(q.correct) && q.correct.indexOf(choice) !== -1) hits++;
+                });
+                return hits * 2.5;
+            } else if (q.type === 'complexYesNo') {
+                if (!ans || typeof ans !== 'object' || !Array.isArray(q.subQuestions)) return 0;
+                var subHits = 0;
+                q.subQuestions.forEach(function(sq) {
+                    if (ans[sq.subId] === sq.correct) subHits++;
+                });
+                if (subHits === 3) return q.points;
+                if (subHits === 2) return (typeof q.partialPoints === 'number' ? q.partialPoints : 2.5);
+                return 0;
             } else {
-                if (topBtn) {
-                    topBtn.disabled = false;
-                    topBtn.className = 'bg-emerald-600 hover:bg-emerald-700 text-white font-prompt font-semibold text-xs sm:text-sm px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition shadow-sm';
-                    topBtn.innerHTML = '<i class="ph-bold ph-check-circle text-base"></i><span>ส่งกระดาษคำตอบ</span>';
+                if (ans !== null && ans !== undefined && Array.isArray(q.correct) && q.correct.indexOf(ans) !== -1) {
+                    return q.points;
                 }
-                if (bottomBtn) {
-                    bottomBtn.disabled = false;
-                    bottomBtn.className = 'px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-prompt text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition shadow-sm';
-                    bottomBtn.innerHTML = '<i class="ph-bold ph-check-circle"></i><span>ส่งกระดาษคำตอบ</span>';
-                }
-                if (omrBtn) {
-                    omrBtn.disabled = false;
-                    omrBtn.className = 'w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-prompt font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-sm transition';
-                    omrBtn.innerHTML = '<i class="ph-bold ph-check-square-offset text-base"></i><span>ส่งกระดาษคำตอบตรวจคะแนน</span>';
-                }
-                if (confirmBtn) {
-                    confirmBtn.disabled = false;
-                    confirmBtn.className = 'px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm transition';
-                    confirmBtn.textContent = 'ยืนยันส่งกระดาษคำตอบ';
-                }
+                return 0;
             }
         }
 
@@ -9601,28 +9764,36 @@
             QUESTIONS.forEach(function(q) {
                 if (!isQuestionAnswered(q)) unanswered.push(q.id);
             });
+
             var msgEl = document.getElementById('submitModalMessage');
             var warnBox = document.getElementById('unansweredWarningBox');
-            var warnList = document.getElementById('unansweredListText');
+            var warnText = document.getElementById('unansweredListText');
 
-            if (unanswered.length === 0) {
-                if (msgEl) msgEl.textContent = 'คุณระบายคำตอบครบทั้ง ' + QUESTIONS.length + ' ข้อเรียบร้อยแล้ว ยืนยันการส่งกระดาษคำตอบเพื่อตรวจให้คะแนนหรือไม่?';
-                if (warnBox) warnBox.classList.add('hidden');
-            } else {
-                if (msgEl) msgEl.textContent = 'ยังมีข้อสอบที่ยังไม่ได้ระบายคำตอบให้ครบ จำนวน ' + unanswered.length + ' ข้อ คุณต้องการส่งกระดาษคำตอบเลยหรือไม่?';
-                if (warnBox) warnBox.classList.remove('hidden');
-                if (warnList) warnList.textContent = 'ข้อที่ยังไม่ได้ตอบ/ตอบไม่ครบ: ข้อที่ ' + unanswered.join(', ');
+            if (msgEl) {
+                msgEl.textContent = 'คุณตอบคำถามครบแล้ว ' + (QUESTIONS.length - unanswered.length) + ' จากทั้งหมด ' + QUESTIONS.length + ' ข้อ เมื่อกดยืนยันแล้วจะไม่สามารถแก้ไขคำตอบได้อีก';
+            }
+            if (warnBox && warnText) {
+                if (unanswered.length > 0) {
+                    warnText.textContent = 'ข้อที่ยังไม่ได้ระบายคำตอบ (หรือยังเลือกไม่ครบ): ข้อ ' + unanswered.join(', ');
+                    warnBox.classList.remove('hidden');
+                } else {
+                    warnBox.classList.add('hidden');
+                }
             }
 
             var modal = document.getElementById('submitModal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
         }
 
         function closeSubmitModal() {
             var modal = document.getElementById('submitModal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
         }
 
         function gradeExam() {
@@ -9631,81 +9802,88 @@
             clearExamDraft(currentExamYear);
             updateSubmitButtonsState(true);
             closeSubmitModal();
+            toggleMobileOMR(false);
             if (timerInterval) clearInterval(timerInterval);
 
+            var meta = EXAM_METADATA[currentExamYear];
             var part1Score = 0;
             var part2Score = 0;
             var answersDetail = {};
 
             QUESTIONS.forEach(function(q) {
-                var sc = getQuestionScore(q);
-                if (q.part === 1) part1Score += sc;
-                else part2Score += sc;
+                var earned = getQuestionScore(q);
+                if (q.part === 1) part1Score += earned;
+                else part2Score += earned;
 
-                if (q.type === 'complexYesNo') {
-                    var aObj = userAnswers[q.id] || {};
-                    answersDetail[q.id] = (q.subQuestions || []).map(function(sq) {
-                        return sq.subId + ':' + (aObj[sq.subId] || '-');
-                    }).join(',');
+                var origKey = q.origId || q.id;
+                var ans = userAnswers[q.id];
+                if (q.type === 'multi2') {
+                    answersDetail[origKey] = Array.isArray(ans) && ans.length > 0 ? ans.join(',') : '-';
+                } else if (q.type === 'complexYesNo') {
+                    var subMap = (ans && typeof ans === 'object') ? ans : {};
+                    var parts = (q.subQuestions || []).map(function(sq) {
+                        var v = subMap[sq.subId];
+                        return (sq.origSubId || sq.subId) + ':' + (v === 1 ? 'ใช่' : (v === 2 ? 'ไม่ใช่' : '-'));
+                    });
+                    answersDetail[origKey] = parts.join(' | ');
                 } else {
-                    var aArr = userAnswers[q.id] || [];
-                    answersDetail[q.id] = aArr.length > 0 ? aArr.join(',') : '-';
+                    answersDetail[origKey] = (ans !== null && ans !== undefined) ? String(ans) : '-';
                 }
             });
 
-            part1Score = Number(part1Score.toFixed(2));
-            part2Score = Number(part2Score.toFixed(2));
-            var totalScore = Number((part1Score + part2Score).toFixed(2));
+            part1Score = Math.round(part1Score * 100) / 100;
+            part2Score = Math.round(part2Score * 100) / 100;
+            var totalScore = Math.round((part1Score + part2Score) * 100) / 100;
 
-            var evalTitle = 'สรุปผลคะแนนการทดสอบ O-NET วิทยาศาสตร์ ป.6';
-            if (totalScore >= 80) evalTitle = 'สรุปผลคะแนนการทดสอบ (ระดับดีเยี่ยม)';
-            else if (totalScore >= 65) evalTitle = 'สรุปผลคะแนนการทดสอบ (ระดับดีมาก)';
-            else if (totalScore >= 50) evalTitle = 'สรุปผลคะแนนการทดสอบ (ผ่านเกณฑ์มาตรฐาน)';
+            var studentName = (document.getElementById('studentName') ? document.getElementById('studentName').value : '').trim() || 'ผู้เข้าสอบทั่วไป';
+            var seatId = (document.getElementById('studentSeatId') ? document.getElementById('studentSeatId').value : '').trim() || '-';
+            var room = (document.getElementById('studentRoom') ? document.getElementById('studentRoom').value : '').trim() || '-';
+            var place = (document.getElementById('studentPlace') ? document.getElementById('studentPlace').value : '').trim() || '-';
+            var timeSpentSeconds = examMode === 'timed' ? Math.max(0, (meta.durationMinutes * 60) - remainingSeconds) : 0;
 
-            var rankEl = document.getElementById('victoryRankTitle');
-            if (rankEl) rankEl.textContent = evalTitle;
+            var totalEl = document.getElementById('totalScoreText');
+            var p1El = document.getElementById('part1ScoreText');
+            var p2El = document.getElementById('part2ScoreText');
+            var rankTitle = document.getElementById('victoryRankTitle');
+            var studentInfoEl = document.getElementById('resultStudentInfoText');
+            var banner = document.getElementById('resultSummaryBanner');
 
-            var meta = EXAM_METADATA[currentExamYear];
-            var p1Max = meta.part1TotalPoints || 90;
-            var p2Max = meta.part2TotalPoints || 10;
+            if (totalEl) totalEl.textContent = String(totalScore);
+            if (p1El) p1El.textContent = part1Score + ' / ' + meta.part1TotalPoints;
+            if (p2El) p2El.textContent = part2Score + ' / ' + meta.part2TotalPoints;
 
-            document.getElementById('totalScoreText').textContent = totalScore;
-            document.getElementById('part1ScoreText').textContent = part1Score + ' / ' + p1Max;
-            document.getElementById('part2ScoreText').textContent = part2Score + ' / ' + p2Max;
+            var levelText = 'ผลการทดสอบระดับควรเสริมพื้นฐาน';
+            if (totalScore >= 80) levelText = 'ผลการทดสอบระดับดีเยี่ยม';
+            else if (totalScore >= 65) levelText = 'ผลการทดสอบระดับดีมาก';
+            else if (totalScore >= 50) levelText = 'ผลการทดสอบระดับผ่านเกณฑ์';
 
-            var nameVal = (document.getElementById('studentName').value || '').trim() || 'ผู้เข้าสอบทั่วไป';
-            var seatVal = (document.getElementById('studentSeatId').value || '').trim() || '-';
-            var roomVal = (document.getElementById('studentRoom').value || '').trim() || '-';
-            var placeVal = (document.getElementById('studentPlace').value || '').trim() || '-';
+            if (rankTitle) rankTitle.textContent = 'สรุปผลคะแนนการทำแบบทดสอบ — ' + levelText;
+            if (studentInfoEl) {
+                studentInfoEl.textContent = 'ผู้เข้าสอบ: ' + studentName + ' • ปีการศึกษา ' + currentExamYear + ' (ชุด ' + currentSetCode + ')' + (room !== '-' ? (' • ห้อง ' + room) : '');
+            }
+            if (banner) banner.classList.remove('hidden');
 
-            document.getElementById('resultStudentInfoText').textContent =
-                'ชื่อ-นามสกุล: ' + nameVal + ' | เลขที่นั่งสอบ: ' + seatVal + ' | ห้อง: ' + roomVal + ' | ปีการศึกษา ' + currentExamYear;
-
-            document.getElementById('resultSummaryBanner').classList.remove('hidden');
-
-            var totalDurationSecs = (meta.durationMinutes || 60) * 60;
-            var spentSecs = Math.max(0, totalDurationSecs - remainingSeconds);
+            var record = {
+                timestamp: new Date().toISOString(),
+                examYear: currentExamYear,
+                examCode: '65-' + currentSetCode,
+                studentName: studentName,
+                seatId: seatId,
+                room: room,
+                place: place,
+                mode: examMode,
+                part1Score: part1Score,
+                part2Score: part2Score,
+                totalScore: totalScore,
+                timeSpentSeconds: timeSpentSeconds,
+                answersDetail: answersDetail
+            };
 
             if (typeof window.syncScoreToGoogleSheets === 'function') {
-                window.syncScoreToGoogleSheets({
-                    timestamp: new Date().toISOString(),
-                    examYear: currentExamYear,
-                    examCode: '65-100',
-                    studentName: nameVal,
-                    seatId: seatVal,
-                    room: roomVal,
-                    place: placeVal,
-                    mode: examMode,
-                    part1Score: part1Score,
-                    part2Score: part2Score,
-                    totalScore: totalScore,
-                    timeSpentSeconds: spentSecs,
-                    answersDetail: answersDetail
-                });
+                window.syncScoreToGoogleSheets(record);
             }
-
             if (typeof window.renderInlineScoreBannerProgression === 'function') {
-                window.renderInlineScoreBannerProgression(nameVal);
+                window.renderInlineScoreBannerProgression(studentName);
             }
 
             renderAll();
@@ -9713,29 +9891,31 @@
         }
 
         function openResetModal() {
-            saveCurrentExamDraft();
-            var ansCount = countAnsweredQuestions();
-            var resetNoteEl = document.getElementById('resetModalSaveNote');
-            if (resetNoteEl) {
-                if (!isSubmitted && ansCount > 0) {
-                    resetNoteEl.classList.remove('hidden');
-                    resetNoteEl.textContent = 'ระบบได้บันทึกคำตอบที่คุณทำไว้ (' + ansCount + ' ข้อ) ให้อัตโนมัติแล้ว คุณสามารถกด "ทำต่อจากเดิม" ที่หน้าปกได้ตลอดเวลา';
+            var modal = document.getElementById('resetModal');
+            var saveNote = document.getElementById('resetModalSaveNote');
+            if (saveNote) {
+                if (!isSubmitted) {
+                    saveNote.textContent = 'ระบบจะบันทึกคำตอบที่ทำค้างไว้ของปีการศึกษา ' + currentExamYear + ' ให้อัตโนมัติ สามารถกลับมาทำต่อภายหลังได้';
+                    saveNote.classList.remove('hidden');
                 } else {
-                    resetNoteEl.classList.add('hidden');
+                    saveNote.classList.add('hidden');
                 }
             }
-            var modal = document.getElementById('resetModal');
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
         }
 
         function closeResetModal() {
             var modal = document.getElementById('resetModal');
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
         }
 
-        function confirmResetExam() {
+        function confirmResetExam(skipRedraw) {
             closeResetModal();
             if (!isSubmitted) {
                 saveCurrentExamDraft();
@@ -9743,6 +9923,10 @@
             if (timerInterval) clearInterval(timerInterval);
             isSubmitted = false;
             updateSubmitButtonsState(false);
+
+            if (!skipRedraw) {
+                currentSetCode = drawNextRandomSetForYear(currentExamYear);
+            }
             initializeAnswersState();
 
             var examViewEl = document.getElementById('examView');
@@ -9755,15 +9939,24 @@
                 topControlsEl.classList.remove('flex');
             }
             if (coverViewEl) coverViewEl.classList.remove('hidden');
+            updateCoverMetadataUI(currentExamYear);
             updateDraftBannerOnCover();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // Initial check for saved draft on page load
+        // Initialize UI on page load
+        updateCoverMetadataUI(currentExamYear);
+        initializeAnswersState();
         setTimeout(function() {
             updateDraftBannerOnCover();
         }, 100);
 
+        window.switchExamYear = switchExamYear;
+        window.openSwitchYearModal = openSwitchYearModal;
+        window.closeSwitchYearModal = closeSwitchYearModal;
+        window.confirmSwitchYearAction = confirmSwitchYearAction;
+        window.resumeExamFromDraft = resumeExamFromDraft;
+        window.discardCurrentYearDraft = discardCurrentYearDraft;
         window.startExam = startExam;
         window.setExamViewMode = setExamViewMode;
         window.navigateQuestion = navigateQuestion;
